@@ -1,15 +1,16 @@
 import torch
 import argparse
 import re
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 from datasets import load_dataset
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained LoRA adapter on GSM8K.")
     parser.add_argument("--base_model_id", type=str, default="NousResearch/Meta-Llama-3-8B-Instruct")
-    parser.add_argument("--adapter_path", type=str, default="./artifacts/adapters/adapter_reasoning/final")
-    parser.add_argument("--num_samples", type=int, default=3, help="Number of test samples to evaluate.")
+    parser.add_argument("--adapter_path", type=str, default="./artifacts/adapters/colab_reasoning_adapter/final")
+    parser.add_argument("--num_samples", type=int, default=100, help="Number of test samples to evaluate.")
     return parser.parse_args()
 
 def extract_answer(text: str) -> str:
@@ -24,53 +25,56 @@ def main():
     print("1. Loading Tokenizer and Data...")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
     dataset = load_dataset("openai/gsm8k", "main")
-    test_data = dataset["test"].select(range(args.num_samples))
+    
+    # Shuffle with a fixed seed to get a consistent random subset of 100 problems
+    test_data = dataset["test"].shuffle(seed=42).select(range(args.num_samples))
 
-    print(f"2. Loading Base Model ({args.base_model_id})...")
+    print(f"2. Loading Base Model ({args.base_model_id}) in 4-bit...")
+    quant_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16
+    )
+
     base_model = AutoModelForCausalLM.from_pretrained(
         args.base_model_id,
-        torch_dtype=torch.bfloat16,
+        quantization_config=quant_config,
         device_map="auto"
     )
 
+# comment out to test with LoRA
     print(f"3. Injecting LoRA Adapter from {args.adapter_path}...")
     model = PeftModel.from_pretrained(base_model, args.adapter_path)
-    model.eval() # Set to evaluation mode
-
-    print("\n--- Starting Evaluation ---")
+    model.eval()
     
-    for i, example in enumerate(test_data):
-        print(f"\n[Problem {i+1}]")
-        print(f"Question: {example['question']}")
-        
-        # 1. Format the prompt using the exact chat template from training
+
+    # # Bypass the adapter and assign the base model directly
+    # print("3. Bypassing adapter: Evaluating Base Model only...")
+    # model = base_model
+    # model.eval()
+
+    print(f"\n--- Starting Evaluation on {args.num_samples} Samples ---")
+    
+    correct_count = 0
+    failed_extraction_count = 0
+
+    for i, example in enumerate(tqdm(test_data, desc="Evaluating")):
         messages = [
             {"role": "system", "content": "You are a mathematical reasoning assistant. Solve the problem step-by-step and provide the final answer after ####."},
             {"role": "user", "content": example["question"]}
         ]
         
-        prompt = tokenizer.apply_chat_template(
-            messages, 
-            tokenize=False, 
-            add_generation_prompt=True # Tells Llama 3 to append the assistant header token
-        )
-        
+        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
-        # 2. Generate with Greedy Decoding
-        # Temperature 0.0 forces the model to pick the absolute highest probability token.
-        
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=512,
                 do_sample=False,
-                temperature=0.0, 
                 pad_token_id=tokenizer.eos_token_id
             )
         
-        # 3. Decode and Parse
-        # Slice the output to only include the newly generated tokens
         input_length = inputs["input_ids"].shape[1]
         generated_tokens = outputs[0][input_length:]
         response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
@@ -78,12 +82,32 @@ def main():
         extracted_ans = extract_answer(response)
         ground_truth = extract_answer(example["answer"])
 
-        print(f"\nModel Output:\n{response}")
-        print("-" * 20)
-        print(f"Extracted Model Answer: {extracted_ans}")
-        print(f"Ground Truth Answer:    {ground_truth}")
-        print(f"Correct:                {extracted_ans == ground_truth}")
-        print("=" * 50)
+        is_correct = extracted_ans == ground_truth
+        if extracted_ans == "Extraction Failed":
+            failed_extraction_count += 1
+        elif is_correct:
+            correct_count += 1
+
+        # Print the outputs directly to the console during the loop
+        tqdm.write(f"\n[Problem {i+1}]")
+        tqdm.write(f"Question: {example['question']}")
+        tqdm.write(f"\nModel Output:\n{response}")
+        tqdm.write("-" * 20)
+        tqdm.write(f"Extracted Model Answer: {extracted_ans}")
+        tqdm.write(f"Ground Truth Answer:    {ground_truth}")
+        tqdm.write(f"Correct:                {is_correct}")
+        tqdm.write("=" * 50)
+
+    # Print Final Statistics
+    accuracy = (correct_count / args.num_samples) * 100
+    print("\n" + "="*50)
+    print("FINAL EVALUATION METRICS")
+    print("="*50)
+    print(f"Total Samples Tested:  {args.num_samples}")
+    print(f"Correct Answers:       {correct_count}")
+    print(f"Failed Extractions:    {failed_extraction_count}")
+    print(f"Overall Accuracy:      {accuracy:.2f}%")
+    print("="*50)
 
 if __name__ == "__main__":
     main()
