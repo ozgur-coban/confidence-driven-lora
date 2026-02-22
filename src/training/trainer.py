@@ -22,30 +22,35 @@ class AdapterTrainer:
             return_tensors="pt"
         )
 
-    def get_training_args(self, adapter_name: str) -> TrainingArguments:
+    def get_training_args(
+        self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int
+    ) -> TrainingArguments:
         """Configures the hardware utilization and learning hyperparameters."""
         save_path = os.path.join(self.output_dir, adapter_name)
         
         return TrainingArguments(
             output_dir=save_path,
-            per_device_train_batch_size=2,
-            gradient_accumulation_steps=8, # Simulates a batch size of 16 (2 * 8)
+            per_device_train_batch_size=batch_size,
+            gradient_accumulation_steps=grad_accum,
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
-            num_train_epochs=2,
-            logging_steps=10,
+            num_train_epochs=epochs,
+            logging_steps=logging_steps,
             save_strategy="epoch",
-            bf16=True, # Critical: Matches the bfloat16 precision of the base model
+            fp16=True,  
+            bf16=False, 
             optim="adamw_torch",
             max_grad_norm=0.3,
             warmup_ratio=0.03,
-            group_by_length=True, # Groups sequences of similar length to minimize padding overhead
-            report_to="none" # Disables wandb/tensorboard logging for this local test
+            group_by_length=True,
+            report_to="none" 
         )
 
-    def train(self, adapter_name: str):
+    def train(
+        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10
+    ):
         """Initializes the Trainer and executes the training loop."""
-        args = self.get_training_args(adapter_name)
+        args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps)
         
         trainer = Trainer(
             model=self.model,
@@ -57,7 +62,6 @@ class AdapterTrainer:
         print(f"Starting training for {adapter_name} adapter...")
         trainer.train()
         
-        # Save only the LoRA adapter weights, not the full 8B model
         final_save_path = os.path.join(self.output_dir, adapter_name, "final")
         trainer.model.save_pretrained(final_save_path)
         self.tokenizer.save_pretrained(final_save_path)

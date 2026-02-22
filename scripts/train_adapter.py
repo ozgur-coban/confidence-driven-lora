@@ -18,24 +18,16 @@ from src.training.trainer import AdapterTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a single-domain LoRA adapter.")
-    parser.add_argument(
-        "--model_id", 
-        type=str, 
-        default="meta-llama/Meta-Llama-3.1-8B-Instruct",
-        help="Hugging Face model ID for the base model."
-    )
-    parser.add_argument(
-        "--adapter_name", 
-        type=str, 
-        default="adapter_reasoning",
-        help="Name of the output adapter directory."
-    )
-    parser.add_argument(
-        "--max_length", 
-        type=int, 
-        default=512,
-        help="Sequence truncation length."
-    )
+    parser.add_argument("--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
+    parser.add_argument("--adapter_name", type=str, default="adapter_reasoning")
+    parser.add_argument("--max_length", type=int, default=384)
+    
+    # NEW CLI ARGUMENTS
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--grad_accum", type=int, default=4)
+    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--logging_steps", type=int, default=10)
+    
     return parser.parse_args()
 
 def main():
@@ -69,7 +61,13 @@ def main():
         output_dir="./artifacts/adapters"
     )
     
-    trainer.train(adapter_name=args.adapter_name)
+    trainer.train(
+        adapter_name=args.adapter_name,
+        batch_size=args.batch_size,
+        grad_accum=args.grad_accum,
+        epochs=args.epochs,
+        logging_steps=args.logging_steps
+    )
     print("--- Pipeline Execution Complete ---")
 
 if __name__ == "__main__":
