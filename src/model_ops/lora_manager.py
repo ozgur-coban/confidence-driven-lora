@@ -3,7 +3,7 @@ from transformers import AutoModelForCausalLM
 from peft import LoraConfig, get_peft_model, TaskType
 
 class LoraManager:
-    def __init__(self, model_id: str = "NousResearch/Meta-Llama-3-8B-Instruct"):
+    def __init__(self, model_id: str = "meta-llama/Meta-Llama-3.1-8B-Instruct"):
         self.model_id = model_id
         # Automatically detect GPU
         self.device_map = "auto" if torch.cuda.is_available() else "cpu"
