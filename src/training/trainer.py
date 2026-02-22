@@ -32,15 +32,15 @@ class AdapterTrainer:
             gradient_accumulation_steps=8, # Simulates a batch size of 16 (2 * 8)
             learning_rate=2e-4,
             lr_scheduler_type="cosine",
-            num_train_epochs=2,
-            logging_steps=10,
+            num_train_epochs=3, # Increased to 3 for better reasoning convergence
+            logging_steps=1,
             save_strategy="epoch",
-            bf16=True, # Critical: Matches the bfloat16 precision of the base model
+            fp16=True,  # Enabled fp16 for Tesla T4 compatibility
+            bf16=False, # Disabled bf16 as it is unsupported on Turing architecture
             optim="adamw_torch",
             max_grad_norm=0.3,
             warmup_ratio=0.03,
             group_by_length=True, # Groups sequences of similar length to minimize padding overhead
-            report_to="none" # Disables wandb/tensorboard logging for this local test
         )
 
     def train(self, adapter_name: str):
