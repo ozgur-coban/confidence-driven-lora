@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument(
         "--model_id", 
         type=str, 
-        default="NousResearch/Meta-Llama-3-8B-Instruct",
+        default="meta-llama/Meta-Llama-3.1-8B-Instruct",
         help="Hugging Face model ID for the base model."
     )
     parser.add_argument(
