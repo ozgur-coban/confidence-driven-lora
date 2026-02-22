@@ -13,6 +13,7 @@ from transformers import AutoTokenizer
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
+from src.data_ops.codealpaca_preprocessor import CodeAlpacaPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
 
@@ -27,6 +28,9 @@ def parse_args():
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
+
+    parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k"], required=True, 
+                        help="Which dataset/domain to train on.")
     
     return parser.parse_args()
 
@@ -39,8 +43,13 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_id)
     
     # 2. Preprocess Data
-    print("Preprocessing dataset...")
-    preprocessor = GSM8KPreprocessor(tokenizer=tokenizer, max_length=args.max_length)
+    print("Initializing Preprocessor...")
+    if args.dataset == "openai/gsm8k":
+        preprocessor = GSM8KPreprocessor(tokenizer, max_length=args.max_length)
+    elif args.dataset == "sahil2801/CodeAlpaca-20k":
+        preprocessor = CodeAlpacaPreprocessor(tokenizer, max_length=args.max_length)
+    else:
+        raise ValueError("Invalid dataset selected.")
     processed_dataset = preprocessor.process()
     train_data = processed_dataset["train"]
     print(f"Training dataset ready: {len(train_data)} samples.")
