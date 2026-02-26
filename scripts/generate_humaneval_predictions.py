@@ -9,9 +9,9 @@ from peft import PeftModel
 from datasets import load_dataset
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Generate HumanEval predictions using a trained LoRA adapter.")
+    parser = argparse.ArgumentParser(description="Generate HumanEval predictions using a base model or trained LoRA adapter.")
     parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
-    parser.add_argument("--adapter_path", type=str, required=True, help="Path to the trained Code LoRA adapter.")
+    parser.add_argument("--adapter_path", type=str, default=None, help="Path to the trained Code LoRA adapter. If omitted, runs base model.")
     parser.add_argument("--num_samples", type=int, default=10, help="Number of samples to generate (max 164).")
     parser.add_argument("--output_file", type=str, default="artifacts/generated_results/humaneval_predictions.json")
     return parser.parse_args()
@@ -37,7 +37,7 @@ def main():
     num_to_evaluate = min(args.num_samples, len(dataset))
     dataset = dataset.select(range(num_to_evaluate))
 
-    print(f"2. Loading Base Model and Injecting Adapter: {args.adapter_path}")
+    print(f"2. Loading Base Model: {args.base_model_id}")
     quant_config = BitsAndBytesConfig(
         load_in_4bit=True, 
         bnb_4bit_compute_dtype=torch.bfloat16
@@ -47,7 +47,14 @@ def main():
         quantization_config=quant_config, 
         device_map="auto"
     )
-    model = PeftModel.from_pretrained(base_model, args.adapter_path)
+
+    if args.adapter_path:
+        print(f"Injecting Adapter: {args.adapter_path}")
+        model = PeftModel.from_pretrained(base_model, args.adapter_path)
+    else:
+        print("No adapter path provided. Running base model only.")
+        model = base_model
+
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
 
