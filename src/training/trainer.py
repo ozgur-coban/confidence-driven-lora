@@ -25,7 +25,6 @@ class AdapterTrainer:
     def get_training_args(
         self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int
     ) -> TrainingArguments:
-        """Configures the hardware utilization and learning hyperparameters."""
         save_path = os.path.join(self.output_dir, adapter_name)
         
         return TrainingArguments(
@@ -36,7 +35,13 @@ class AdapterTrainer:
             lr_scheduler_type="cosine",
             num_train_epochs=epochs,
             logging_steps=logging_steps,
-            save_strategy="epoch",
+            
+            # --- UPDATED FOR CHECKPOINTING ---
+            save_strategy="steps",       # Save every X steps
+            save_steps=50,               # Change this to 50 or 100
+            save_total_limit=3,          # Keep only the 3 most recent checkpoints to save Drive space
+            # --------------------------------
+            
             fp16=True,  
             bf16=False, 
             optim="adamw_torch",
@@ -47,7 +52,7 @@ class AdapterTrainer:
         )
 
     def train(
-        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10
+        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10, resume_from_checkpoint:str=None
     ):
         """Initializes the Trainer and executes the training loop."""
         args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps)
@@ -60,7 +65,9 @@ class AdapterTrainer:
         )
         
         print(f"Starting training for {adapter_name} adapter...")
-        trainer.train()
+        # If resume_from_checkpoint is a path, it will load weights/optimizer/scheduler
+        # If it is True, it looks in the output_dir for the latest checkpoint
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
         
         final_save_path = os.path.join(self.output_dir, adapter_name, "final")
         trainer.model.save_pretrained(final_save_path)
