@@ -16,6 +16,7 @@ from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
 from src.data_ops.codealpaca_preprocessor import CodeAlpacaPreprocessor
 from src.data_ops.medical_meadow_flashcards_preprocessor import MedicalMeadowFlashcardsPreprocessor
 from src.data_ops.medqa_preprocessor import MedQAPreprocessor
+from src.data_ops.codefeedback_preprocessor import CodeFeedbackPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
 
@@ -32,7 +33,7 @@ def parse_args():
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--output_dir", type=str, default="./artifacts/adapters", help="Base directory to save the trained adapters.")
 
-    parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k","medalpaca/medical_meadow_medical_flashcards","GBaker/MedQA-USMLE-4-options"], required=True, 
+    parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k","medalpaca/medical_meadow_medical_flashcards","GBaker/MedQA-USMLE-4-options","m-a-p/CodeFeedback-Filtered-Instruction"], required=True, 
                         help="Which dataset/domain to train on.")
     
     return parser.parse_args()
@@ -55,6 +56,8 @@ def main():
         preprocessor = MedicalMeadowFlashcardsPreprocessor(tokenizer, max_length=args.max_length)
     elif args.dataset == "GBaker/MedQA-USMLE-4-options":
         preprocessor = MedQAPreprocessor(tokenizer, max_length=args.max_length)
+    elif args.dataset =="m-a-p/CodeFeedback-Filtered-Instruction":
+        preprocessor=CodeFeedbackPreprocessor(tokenizer,max_length=args.max_length)
     else:
         raise ValueError("Invalid dataset selected.")
     processed_dataset = preprocessor.process()
