@@ -32,6 +32,8 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--output_dir", type=str, default="./artifacts/adapters", help="Base directory to save the trained adapters.")
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None, 
+                        help="Path to a checkpoint or 'True' to find latest in output_dir")
 
     parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k","medalpaca/medical_meadow_medical_flashcards","GBaker/MedQA-USMLE-4-options","m-a-p/CodeFeedback-Filtered-Instruction"], required=True, 
                         help="Which dataset/domain to train on.")
@@ -83,7 +85,8 @@ def main():
         batch_size=args.batch_size,
         grad_accum=args.grad_accum,
         epochs=args.epochs,
-        logging_steps=args.logging_steps
+        logging_steps=args.logging_steps,
+        resume_from_checkpoint=args.resume_from_checkpoint
     )
     print("--- Pipeline Execution Complete ---")
 
