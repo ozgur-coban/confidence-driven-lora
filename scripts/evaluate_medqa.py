@@ -9,9 +9,9 @@ from peft import PeftModel
 from datasets import load_dataset
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate a trained LoRA adapter on MedQA USMLE.")
+    parser = argparse.ArgumentParser(description="Evaluate a trained LoRA adapter or base model on MedQA USMLE.")
     parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
-    parser.add_argument("--adapter_path", type=str, required=True, help="Path to the trained MedQA LoRA adapter.")
+    parser.add_argument("--adapter_path", type=str, default=None, help="Path to the trained MedQA LoRA adapter. If omitted, runs base model.")
     parser.add_argument("--num_samples", type=int, default=100, help="Number of test samples to evaluate. Set to -1 for the full test set.")
     parser.add_argument("--output_file", type=str, default="artifacts/generated_results/medqa_eval_results.json")
     return parser.parse_args()
@@ -35,13 +35,13 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     print("1. Loading MedQA Test Set...")
-    # Load the official test split
     dataset = load_dataset("GBaker/MedQA-USMLE-4-options", split="test")
     
-    if args.num_samples > 0:
-        dataset = dataset.select(range(min(args.num_samples, len(dataset))))
+    # Handle -1 for full dataset
+    num_to_evaluate = len(dataset) if args.num_samples == -1 else min(args.num_samples, len(dataset))
+    dataset = dataset.select(range(num_to_evaluate))
 
-    print(f"2. Loading Base Model and Injecting Adapter: {args.adapter_path}")
+    print(f"2. Loading Base Model: {args.base_model_id}")
     quant_config = BitsAndBytesConfig(
         load_in_4bit=True, 
         bnb_4bit_compute_dtype=torch.bfloat16
@@ -51,7 +51,14 @@ def main():
         quantization_config=quant_config, 
         device_map="auto"
     )
-    model = PeftModel.from_pretrained(base_model, args.adapter_path)
+    
+    if args.adapter_path:
+        print(f"Injecting Adapter: {args.adapter_path}")
+        model = PeftModel.from_pretrained(base_model, args.adapter_path)
+    else:
+        print("No adapter path provided. Running base model only.")
+        model = base_model
+        
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
 
@@ -87,7 +94,7 @@ def main():
         chat_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = tokenizer(chat_prompt, return_tensors="pt").to(device)
 
-        # 2. Run Inference (Restrict max_new_tokens to 10 since we only want a letter)
+        # 2. Run Inference
         with torch.no_grad():
             outputs = model.generate(
                 **inputs, 
@@ -116,8 +123,6 @@ def main():
 
     # 4. Calculate Final Metrics
     accuracy = (correct_count / len(dataset)) * 100
-
-    
 
     print("\n" + "="*50)
     print("FINAL MEDQA (USMLE) EVALUATION METRICS")
