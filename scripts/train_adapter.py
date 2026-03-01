@@ -15,13 +15,14 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
 from src.data_ops.codealpaca_preprocessor import CodeAlpacaPreprocessor
 from src.data_ops.medical_meadow_flashcards_preprocessor import MedicalMeadowFlashcardsPreprocessor
+from src.data_ops.medqa_preprocessor import MedQAPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a single-domain LoRA adapter.")
     parser.add_argument("--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
-    parser.add_argument("--adapter_name", type=str, default="adapter_reasoning")
+    parser.add_argument("--adapter_name", type=str, required=True)
     parser.add_argument("--max_length", type=int, default=384)
     
     # NEW CLI ARGUMENTS
@@ -29,8 +30,9 @@ def parse_args():
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
+    parser.add_argument("--output_dir", type=str, default="./artifacts/adapters", help="Base directory to save the trained adapters.")
 
-    parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k","medalpaca/medical_meadow_medical_flashcards"], required=True, 
+    parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k","medalpaca/medical_meadow_medical_flashcards","GBaker/MedQA-USMLE-4-options"], required=True, 
                         help="Which dataset/domain to train on.")
     
     return parser.parse_args()
@@ -51,6 +53,8 @@ def main():
         preprocessor = CodeAlpacaPreprocessor(tokenizer, max_length=args.max_length)
     elif args.dataset == "medalpaca/medical_meadow_medical_flashcards":
         preprocessor = MedicalMeadowFlashcardsPreprocessor(tokenizer, max_length=args.max_length)
+    elif args.dataset == "GBaker/MedQA-USMLE-4-options":
+        preprocessor = MedQAPreprocessor(tokenizer, max_length=args.max_length)
     else:
         raise ValueError("Invalid dataset selected.")
     processed_dataset = preprocessor.process()
@@ -63,14 +67,12 @@ def main():
     base_model = lora_manager.load_base_model()
     peft_model = lora_manager.get_peft_setup(base_model)
 
-    
-
     # 4. Execute Training
     trainer = AdapterTrainer(
         model=peft_model,
         tokenizer=tokenizer,
         train_dataset=train_data,
-        output_dir="./artifacts/adapters"
+        output_dir=args.output_dir  # <--- FIXED: Now pulls from CLI args
     )
     
     trainer.train(
