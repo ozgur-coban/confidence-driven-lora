@@ -44,32 +44,64 @@ def decode_private_tests(private_test_str):
             return []
 
 def run_functional_test(code, test_input, expected_output, func_name, timeout):
-    """Executes LeetCode-style functional code."""
-    # We write a dynamic wrapper to instantiate the class and call the method
+    """Executes LeetCode-style functional code with robust class handling."""
+    
+    # 1. We construct a wrapper that handles both Class-based and Function-based solutions
     wrapper = f"""
-import sys, json, math, collections, itertools
+import sys, json, math, collections, itertools, heapq, functools, bisect
 from typing import *
 
+# Inject the model's generated code here
 {code}
 
 if __name__ == "__main__":
     try:
-        # LCB functional inputs are often string-represented JSON arrays
+        # LCB inputs are typically a JSON list of arguments, e.g. "[ [2,7,11,15], 9 ]"
         raw_input = sys.stdin.read().strip()
-        args = [json.loads(arg) for arg in json.loads(raw_input)]
-        
-        func_name = "{func_name}"
-        if "Solution" in globals():
-            obj = Solution()
-            func = getattr(obj, func_name)
-        else:
-            func = globals()[func_name]
+        if not raw_input:
+            exit(0)
             
-        res = func(*args)
-        print(json.dumps(res))
+        try:
+            args = json.loads(raw_input)
+        except json.JSONDecodeError:
+            # Fallback for raw inputs (rare in LCB but possible)
+            args = [raw_input]
+
+        target_func_name = "{func_name}"
+        func_to_call = None
+
+        # Strategy 1: Check if the function exists globally
+        if target_func_name in globals():
+            func_to_call = globals()[target_func_name]
+        
+        # Strategy 2: Check if it's inside class Solution
+        elif "Solution" in globals():
+            sol = Solution()
+            if hasattr(sol, target_func_name):
+                func_to_call = getattr(sol, target_func_name)
+        
+        if func_to_call is None:
+            # Last resort: Try to find ANY function that matches the name
+            # (Sometimes metadata says "solve" but user wrote "Solution.solve")
+            print(json.dumps("ERROR_FUNC_NOT_FOUND"))
+            sys.exit(0)
+
+        # Execute
+        # If args is a list, unpack it. If it's a single value, pass it directly.
+        if isinstance(args, list):
+            result = func_to_call(*args)
+        else:
+            result = func_to_call(args)
+
+        # Output result as JSON for comparison
+        print(json.dumps(result))
+
     except Exception as e:
-        print(f"EXECUTION_ERROR: {{e}}")
+        # Print error so we can debug, but formatted as a JSON string to avoid breaking the parser
+        error_msg = str(e)
+        print(json.dumps(f"EXECUTION_ERROR: {{error_msg}}"))
 """
+    # ... (Rest of the function remains the same: writing to tempfile, subprocess run, etc.)
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
         f.write(wrapper)
         temp_file_path = f.name
