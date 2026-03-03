@@ -34,10 +34,10 @@ def main():
     print("1. Loading LiveCodeBench Dataset (Contamination-Free)...")
     try:
         # LCB typically uses 'test' split for evaluations
-        dataset = load_dataset("livecodebench/code_generation_lite", split="test")
+        dataset = load_dataset("livecodebench/code_generation_lite", split="test",trust_remote_code=True)
     except Exception:
         # Fallback if Hugging Face mapped it to 'train'
-        dataset = load_dataset("livecodebench/code_generation_lite", split="train")
+        dataset = load_dataset("livecodebench/code_generation_lite", split="train",trust_remote_code=True)
 
     # Time-Travel Eval: Take the absolute newest problems added to the benchmark
     # to guarantee Llama 3.1 has never seen them during pre-training.
