@@ -19,9 +19,9 @@ def parse_args():
 def load_lcb_dataset():
     """Loads the original dataset to fetch the hidden test cases."""
     try:
-        dataset = load_dataset("livecodebench/code_generation_lite", split="test",trust_remote_code=True)
+        dataset = load_dataset("sam-paech/livecodebench-code_generation_lite", split="test")
     except Exception:
-        dataset = load_dataset("livecodebench/code_generation_lite", split="train",trust_remote_code=True)
+        dataset = load_dataset("sam-paech/livecodebench-code_generation_lite", split="release_latest")
     
     # Create a quick lookup dictionary by task_id
     problem_dict = {}
