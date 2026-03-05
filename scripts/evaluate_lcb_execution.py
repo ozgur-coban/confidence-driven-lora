@@ -6,6 +6,7 @@ import tempfile
 import zlib
 import pickle
 import base64
+import re
 from tqdm import tqdm
 from datasets import load_dataset
 
@@ -42,6 +43,28 @@ def decode_private_tests(private_test_str):
         except Exception as e:
             print(f"Failed to decode private tests: {e}")
             return []
+
+def clean_code(code_str):
+    """
+    Strips Markdown code blocks (```python ... ```) if present.
+    Also handles generic ``` ... ``` blocks.
+    """
+    if not code_str:
+        return ""
+    
+    # Check for python-specific block
+    pattern_py = r"```python\s+(.*?)\s+```"
+    match_py = re.search(pattern_py, code_str, re.DOTALL)
+    if match_py:
+        return match_py.group(1)
+
+    # Check for generic block
+    pattern_gen = r"```\s+(.*?)\s+```"
+    match_gen = re.search(pattern_gen, code_str, re.DOTALL)
+    if match_gen:
+        return match_gen.group(1)
+        
+    return code_str
 
 def run_functional_test(code, test_input, expected_output, func_name, timeout):
     """Executes LeetCode-style functional code with robust class handling."""
@@ -168,7 +191,11 @@ def main():
 
     for idx, pred in enumerate(tqdm(predictions, desc="Evaluating Code")):
         task_id = pred["task_id"]
-        code = pred["extracted_code"]
+        
+        # --- FIX: Clean the code (strip markdown) before running ---
+        # We also check 'generated_text' if 'extracted_code' is missing/empty
+        raw_code = pred.get("extracted_code", "") or pred.get("generated_text", "")
+        code = clean_code(raw_code)
         
         if task_id not in dataset_dict:
             continue

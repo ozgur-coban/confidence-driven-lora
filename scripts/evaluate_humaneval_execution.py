@@ -20,9 +20,17 @@ def main():
     failed = 0
 
     for item in tqdm(data, desc="Evaluating Code"):
-        # 1. Stitch the executable script together
-        # We combine the model's code, the assertion tests, and the trigger function
-        full_script = f"{item['extracted_code']}\n{item['test']}\ncheck({item['entry_point']})\n"
+        
+        # 1. Stitch the executable script together with safety imports
+        safety_imports = "import math\nimport collections\nfrom typing import *\n\n"
+        
+        # HumanEval base models sometimes ONLY output the body. 
+        # If the extracted code doesn't have a 'def ', we prepend the prompt!
+        code_to_run = item['extracted_code']
+        if "def " not in code_to_run:
+             code_to_run = item['prompt'] + "\n" + code_to_run
+
+        full_script = f"{safety_imports}{code_to_run}\n{item['test']}\ncheck({item['entry_point']})\n"
 
         # 2. Write to a temporary Python file
         with tempfile.NamedTemporaryFile(mode='w', suffix=".py", delete=False) as tmp:
