@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
 class SemanticRouter:
-    def __init__(self, embedding_model="all-MiniLM-L6-v2"):
+    def __init__(self, embedding_model="sentence-transformers/all-mpnet-base-v2"):
         self.embedder = SentenceTransformer(embedding_model)
         self.centroids = {}
 
@@ -38,13 +38,16 @@ class SemanticRouter:
         
         return domain_names[best_match_idx], best_score
 
-    def predict(self, prompt: str, threshold: float = 0.2):
-        """
-        Routes the prompt. 
-        Returns (domain, score) for easier debugging.
-        If score < threshold, it falls back to 'general'.
-        """
-        domain, score = self.predict_with_score(prompt)
-        if score < threshold:
-            return "unknown", score
-        return domain, score
+    def predict(self, prompt: str, threshold: float = 0.35):
+            """
+            Routes the prompt. 
+            If score < threshold, it defaults to 'general'.
+            Returns: (final_decision, best_match_domain, score)
+            """
+            best_match, score = self.predict_with_score(prompt)
+            
+            # The strict gatekeeper: If it's not highly confident, it's general chat.
+            if score < threshold:
+                return "general", best_match, score
+                
+            return best_match, best_match, score
