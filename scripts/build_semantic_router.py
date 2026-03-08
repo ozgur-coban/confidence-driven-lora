@@ -17,22 +17,18 @@ def parse_args():
     return parser.parse_args()
 def main():
     args=parse_args()
-    print("1. Fetching Training Data (Specialists + UltraChat)...")
+    print("1. Fetching Training Data ")
     math_ds = load_dataset("openai/gsm8k", "main", split="train")
     code_ds = load_dataset("m-a-p/CodeFeedback-Filtered-Instruction", split="train")
     med_ds = load_dataset("GBaker/MedQA-USMLE-4-options", split="train")
     
-    # Use UltraChat for the General centroid
-    general_ds = load_dataset("HuggingFaceH4/ultrachat_200k", split="train_sft", streaming=True)
+    # Use squad_v2 for the General centroid
+    squad_ds = load_dataset("squad_v2", split="train")
     router = SemanticRouter()
     if args.enable_training:
         general_prompts = []
-        for row in general_ds:
-            messages = row['messages']
-            if len(messages) > 0 and messages[0]['role'] == 'user':
-                general_prompts.append(messages[0]['content'])
-            if len(general_prompts) >= 6000:
-                break
+        for row in squad_ds.select(range(6000)):
+            general_prompts.append(row['question'])
 
         training_data = {
             "math": [item['question'] for item in math_ds.select(range(6000))],
