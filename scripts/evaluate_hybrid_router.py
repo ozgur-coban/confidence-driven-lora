@@ -77,7 +77,7 @@ def main():
         print("-" * 70)
 
     # WRITE ONLY ERRORS TO JSON LOG FILE
-    error_file_path = "logs/hybrid_router_errors.json"
+    error_file_path = "logs/hybrid_router_errors_prioritized_95syntax.json"
     os.makedirs(os.path.dirname(error_file_path), exist_ok=True)
     with open(error_file_path, "w", encoding="utf-8") as f:
         json.dump(detailed_errors, f, indent=4, ensure_ascii=False)

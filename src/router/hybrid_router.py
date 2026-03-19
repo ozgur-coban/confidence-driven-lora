@@ -28,9 +28,8 @@ class HybridRouter:
 
         sem_valid = sem_score >= self.t_sem
         syn_valid = syn_score >= self.t_syn
-
-        # ---------------------------------------------------------
-        # DECISION MATRIX (With Clean Rule Names for Aggregation)
+# ---------------------------------------------------------
+        # DECISION MATRIX (With Semantic High-Confidence Shield)
         # ---------------------------------------------------------
         if not sem_valid and not syn_valid:
             decision = "general"
@@ -49,23 +48,32 @@ class HybridRouter:
                 decision = sem_top
                 rule = "Strong Agreement"
                 
+            # 1. SEMANTIC SHIELD: If Semantic is highly confident, it is bulletproof.
+            elif sem_score >= 0.31 and sem_top in ["math", "medical", "code"]:
+                decision = sem_top
+                rule = f"Semantic High Confidence Shield (>= 0.31)"
+                
+            # 2. SYNTAX ABSOLUTE OVERRIDE: If Semantic is weak (< 0.31), Syntax gets to Veto.
+            elif syn_score >= 0.95:
+                decision = syn_top
+                rule = "Syntax Absolute Override (> 0.95 over weak Semantic)"
+                
+            # 3. WEAK CONFLICT RESOLUTION: Neither model is dominating.
             elif sem_top in ["math", "medical"]:
                 decision = sem_top
                 rule = "Semantic Domain Authority"
+                
+            elif sem_top == "code":
+                decision = sem_top
+                rule = "Semantic Code Authority"
                 
             elif syn_top == "code":
                 decision = syn_top
                 rule = "Syntax Code Authority"
                 
-            elif sem_top == "code" and syn_top == "general":
-                # THE FIX: Stops Semantic from dragging General prompts into Code
-                decision = syn_top
-                rule = "Syntax General Authority"
-                
             else:
                 decision = sem_top
                 rule = "Semantic Default Authority"
-
         # ---------------------------------------------------------
         # FORMAT DETAILED LOG STRING
         # ---------------------------------------------------------
@@ -90,5 +98,4 @@ class HybridRouter:
             with open(final_path, "a", encoding="utf-8") as f:
                 f.write(f"\n{log_output}")
 
-        # Return the log string so the eval script can use it for errors
         return decision, rule, log_output
