@@ -3,6 +3,8 @@ import sys
 import time
 import torch
 import warnings
+import argparse
+import subprocess
 
 # Suppress Hugging Face warnings for clean debug logs
 warnings.filterwarnings("ignore")
@@ -19,7 +21,16 @@ def print_profile(step_name, start_time=None):
     allocated = torch.cuda.memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0
     print(f"  [PROFILER] {step_name} | Time: {elapsed} | VRAM: {allocated:.2f} GB")
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="End-to-End Pipeline Debug Test")
+    parser.add_argument("--code_adapter", type=str, default="/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_codefeedback_algo/final")
+    parser.add_argument("--math_adapter", type=str, default="/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_gsm8k/final")
+    parser.add_argument("--medical_adapter", type=str, default="/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_medqa/final")
+    return parser.parse_args()
+
 def main():
+    args = parse_args()
+    
     print("="*70)
     print("END-TO-END PIPELINE DEBUG TEST")
     print("="*70)
@@ -31,18 +42,33 @@ def main():
     
     t0 = time.time()
     router = HybridRouter()
-    router.load(
-        semantic_path="models/semantic_centroids.npy", 
-        syntax_path="models/syntax_router.joblib"
-    )
+    
+    # Attempt to load router artifacts; fallback to training if missing
+    try:
+        router.load(
+            semantic_path="models/semantic_centroids.npy", 
+            syntax_path="models/syntax_router.joblib"
+        )
+    except FileNotFoundError:
+        print("  [PROFILER] Router artifacts not found. Initiating training scripts...")
+        # Assuming your training scripts are located in the scripts folder
+        subprocess.run([sys.executable, "scripts/build_semantic_router.py"], check=True)
+        subprocess.run([sys.executable, "scripts/build_syntax_router.py"], check=True)
+        # Reload after successful build
+        router.load(
+            semantic_path="models/semantic_centroids.npy", 
+            syntax_path="models/syntax_router.joblib"
+        )
+        
     print_profile("Router Loaded", t0)
 
     t1 = time.time()
     adapter_paths = {
-        "code": "/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_codefeedback_algo/final",
-        "math": "/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_gsm8k/final",
-        "medical": "/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_medqa/final"
+        "code": args.code_adapter,
+        "math": args.math_adapter,
+        "medical": args.medical_adapter
     }
+    
     manager = InferenceManager(
         base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
         adapter_paths=adapter_paths
@@ -66,14 +92,24 @@ def main():
         
         # --- ROUTING ---
         t_route = time.time()
-        # We grab the detailed log string from the router to see the exact scores
+        
+        # Pull raw probability distributions directly from the sub-routers for deep debugging
+        sem_probs = router.semantic.predict_proba(prompt)
+        syn_probs = router.syntax.predict_proba(prompt)
+        
         domain, rule, detailed_log = router.predict(prompt, verbose=False)
         route_time = time.time() - t_route
-        print(f"  [DEBUG: ROUTING] Predicted Domain: {domain.upper()} | Rule: {rule} | Time: {route_time:.3f}s")
         
-        print("\n  [DEBUG: ROUTER INTERNAL LOG]")
-        for line in detailed_log.strip().split('\n'):
-            print(f"    {line}")
+        print("\n  [DEBUG: FULL CLASS PROBABILITIES]")
+        print("    Semantic Distribution:")
+        for k, v in sorted(sem_probs.items(), key=lambda item: item[1], reverse=True):
+            print(f"      - {k:<8}: {v:.4f}")
+            
+        print("    Syntax Distribution:")
+        for k, v in sorted(syn_probs.items(), key=lambda item: item[1], reverse=True):
+            print(f"      - {k:<8}: {v:.4f}")
+        
+        print(f"\n  [DEBUG: ROUTING DECISION] Predicted Domain: {domain.upper()} | Rule: {rule} | Time: {route_time:.3f}s")
         print_profile(f"Routing Complete ({domain.upper()})", t_route)
 
         # --- GENERATION ---
