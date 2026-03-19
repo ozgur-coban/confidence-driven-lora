@@ -6,14 +6,22 @@ from sklearn.linear_model import LogisticRegression
 
 class SyntaxRouter:
     def __init__(self):
-        # analyzer='char_wb' looks at character n-grams inside word boundaries.
-        # ngram_range=(2, 5) captures short patterns like "()" up to longer ones like "def ".
-        # min_df=5 ignores extremely rare typos to keep the model lightweight.
-        self.vectorizer = TfidfVectorizer(analyzer='char_wb', ngram_range=(2, 5), min_df=5)
+        # Switched to 'char' to capture cross-boundary syntax (like `) { \n`). 
+        # Shifted ngram to (3, 6) to catch full keywords like 'def ' and 'class '.
+        # Added max_features=50000 to prevent overfitting on rare, useless strings.
+        self.vectorizer = TfidfVectorizer(
+            analyzer='word', 
+            token_pattern=r'(?u)\b\w+\b|[^\w\s]', 
+            stop_words='english',
+            ngram_range=(1, 3), 
+            min_df=100, 
+            max_df=0.5,
+            max_features=10000
+        )
         
         # LogisticRegression automatically uses Softmax for multi-class problems.
         # class_weight='balanced' ensures we don't bias towards the largest dataset.
-        self.classifier = LogisticRegression(max_iter=1000, class_weight='balanced')
+        self.classifier = LogisticRegression(max_iter=1000, class_weight=None)
         self.is_fitted = False
 
     def fit(self, domain_data: dict):
