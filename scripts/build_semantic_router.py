@@ -44,10 +44,10 @@ def main():
         print(f"Centroids calculated in {time.time() - start_time:.2f}s")
         
         os.makedirs("artifacts", exist_ok=True)
-        router.save("artifacts/semantic_centroids.npy")
+        router.save("./models/semantic_centroids.npy")
     else:
         print("\n1. Training disabled. Loading pre-trained Semantic Router...")
-        router.load("artifacts/semantic_centroids.npy")
+        router.load("./models/semantic_centroids.npy")
 
     print("\n" + "="*50)
     print("3. ACCURACY & ERROR ANALYSIS")
@@ -113,7 +113,7 @@ def main():
         }
 
     # Save detailed error log to JSON
-    error_file = "artifacts/semantic_router_errors.json"
+    error_file = "./logs/semantic_router_errors.json"
     os.makedirs(os.path.dirname(error_file), exist_ok=True)
     with open(error_file, "w", encoding="utf-8") as f:
         json.dump(detailed_errors, f, indent=4, ensure_ascii=False)

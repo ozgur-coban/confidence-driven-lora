@@ -33,7 +33,7 @@ def main():
         print(f"Training completed in {time.time() - start_train:.2f} seconds.")
         
         os.makedirs("artifacts", exist_ok=True)
-        router.save("artifacts/syntax_router.joblib")
+        router.save("./models/syntax_router.joblib")
         
         print("\n" + "="*50)
         print("TOP 15 IDENTIFIERS (What the model looks for)")
@@ -44,7 +44,7 @@ def main():
             print(f"{domain.upper():<8} -> {formatted}")
     else:
         print("\n1. Training disabled. Loading pre-trained Syntax Router...")
-        router.load("artifacts/syntax_router.joblib")
+        router.load("./models/syntax_router.joblib")
 
     print("\n" + "="*50)
     print("3. ACCURACY & ERROR ANALYSIS")
@@ -93,7 +93,7 @@ def main():
             "raw_scores": np.array(scores)
         }
 
-    error_file_path = "artifacts/syntax_router_errors.json"
+    error_file_path = "./logs/syntax_router_errors.json"
     with open(error_file_path, "w", encoding="utf-8") as f:
         json.dump(detailed_errors, f, indent=4, ensure_ascii=False)
 
