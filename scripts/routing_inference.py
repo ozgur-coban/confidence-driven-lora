@@ -51,9 +51,16 @@ def main():
         )
     except FileNotFoundError:
         print("  [PROFILER] Router artifacts not found. Initiating training scripts...")
-        # Assuming your training scripts are located in the scripts folder
-        subprocess.run([sys.executable, "scripts/build_semantic_router.py"], check=True)
-        subprocess.run([sys.executable, "scripts/build_syntax_router.py"], check=True)
+        
+        # Inject the project root into the subprocess environment
+        env = os.environ.copy()
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        env["PYTHONPATH"] = f"{project_root}:{env.get('PYTHONPATH', '')}"
+
+        # Run the build scripts with the updated environment
+        subprocess.run([sys.executable, "scripts/build_semantic_router.py"], env=env, check=True)
+        subprocess.run([sys.executable, "scripts/build_syntax_router.py"], env=env, check=True)
+        
         # Reload after successful build
         router.load(
             semantic_path="models/semantic_centroids.npy", 
