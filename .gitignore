@@ -226,6 +226,9 @@ __marimo__/
 # Built Visual Studio Code Extensions
 *.vsix
 
+data/
 artifacts/
+logs/
+models/
 *.zip
 .ipynb_checkpoints/
