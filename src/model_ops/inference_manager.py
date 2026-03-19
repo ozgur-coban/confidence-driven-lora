@@ -1,7 +1,7 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
-from src.config.domain_registry import DOMAIN_REGISTRY
+from config.domain_registry import DOMAIN_REGISTRY
 
 class InferenceManager:
     def __init__(self, base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct", adapter_paths=None):
