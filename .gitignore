@@ -228,5 +228,6 @@ __marimo__/
 
 data/
 artifacts/
+logs/
 *.zip
 .ipynb_checkpoints/

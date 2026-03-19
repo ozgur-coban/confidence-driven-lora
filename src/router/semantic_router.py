@@ -37,6 +37,22 @@ class SemanticRouter:
         best_score = similarities[best_match_idx]
         
         return domain_names[best_match_idx], best_score
+    def predict_proba(self, prompt: str) -> dict:
+        """Returns a dictionary of probabilities for all domains."""
+        if not self.centroids:
+            raise ValueError("Router has no centroids. Call fit() or load() first.")
+            
+        prompt_embedding = self.embedder.encode([prompt])
+        domain_names = list(self.centroids.keys())
+        centroid_matrix = np.array(list(self.centroids.values()))
+        
+        similarities = cosine_similarity(prompt_embedding, centroid_matrix)[0]
+        
+        # Apply Softmax to mathematically convert cosine distances into a probability distribution
+        exp_sims = np.exp(similarities - np.max(similarities)) # Subtract max for numerical stability
+        probs = exp_sims / exp_sims.sum()
+        
+        return {domain_names[i]: float(probs[i]) for i in range(len(domain_names))}
 
     def predict(self, prompt: str, threshold: float = 0.35):
             """

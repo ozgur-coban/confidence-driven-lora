@@ -101,6 +101,16 @@ class SyntaxRouter:
         predicted_domain = self.classifier.classes_[best_match_idx]
         
         return predicted_domain, best_score
+    def predict_proba(self, prompt: str) -> dict:
+        """Returns a dictionary of probabilities for all domains."""
+        if not self.is_fitted:
+            raise ValueError("Router has not been fitted or loaded.")
+            
+        X_vec = self.vectorizer.transform([prompt])
+        probs = self.classifier.predict_proba(X_vec)[0]
+        classes = self.classifier.classes_
+        
+        return {classes[i]: float(probs[i]) for i in range(len(classes))}
         
     def predict(self, prompt: str, threshold: float = 0.50) -> str:
         """
