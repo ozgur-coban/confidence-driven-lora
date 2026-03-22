@@ -100,57 +100,92 @@ def main():
     print_profile("Base Model & LoRAs Loaded", t1)
 
     # ---------------------------------------------------------
-    # 2. TEST QUERIES
+    # 2. INTERACTIVE EXECUTION LOOP
     # ---------------------------------------------------------
-    test_queries = {
-        "Expected Medical": "A 45-year-old male presents with sudden onset of severe, tearing chest pain radiating to his back. His blood pressure is 180/110 mmHg. A chest X-ray shows a widened mediastinum. What is the most likely diagnosis and immediate next step in management?",
-        "Expected Math": "If I have a rectangular garden that is 12 feet long and 8 feet wide, and I want to put a 2-foot wide gravel path around the entire outside, what is the total area of the gravel path? ####"
-    }
-
     print("\n" + "="*70)
-    print("--- PHASE 2: EXECUTION ---")
+    print("--- PHASE 2: INTERACTIVE EXECUTION ---")
+    print("Type 'exit' or 'quit' to shut down.")
+    print("="*70)
     
-    for label, prompt in test_queries.items():
-        print(f"\n[TEST CASE]: {label}")
-        print(f"[PROMPT]: {prompt[:100]}...")
-        
-        # --- ROUTING ---
-        t_route = time.time()
-        
-        sem_probs = router.semantic.predict_proba(prompt)
-        syn_probs = router.syntax.predict_proba(prompt)
-        
-        domain, rule, detailed_log = router.predict(prompt, verbose=False)
-        route_time = time.time() - t_route
-        
-        print("\n  [DEBUG: FULL CLASS PROBABILITIES]")
-        print("    Semantic Distribution:")
-        for k, v in sorted(sem_probs.items(), key=lambda item: item[1], reverse=True):
-            print(f"      - {k:<8}: {v:.4f}")
+    while True:
+        try:
+            raw_prompt = input("\n[USER]: ")
+            if raw_prompt.lower() in ['exit', 'quit']:
+                print("\nShutting down pipeline...")
+                break
+            if not raw_prompt.strip():
+                continue
+                
+            # --- PARAMETER INTERCEPTION ---
+            bypass_lora = False
+            prompt = raw_prompt.strip()
             
-        print("    Syntax Distribution:")
-        for k, v in sorted(syn_probs.items(), key=lambda item: item[1], reverse=True):
-            print(f"      - {k:<8}: {v:.4f}")
-        
-        print(f"\n  [DEBUG: ROUTING DECISION] Predicted Domain: {domain.upper()} | Rule: {rule} | Time: {route_time:.3f}s")
-        print_profile(f"Routing Complete ({domain.upper()})", t_route)
+            if prompt.lower().startswith("/base "):
+                bypass_lora = True
+                prompt = prompt[6:].strip() # Strip the "/base " command from the string
+            elif prompt.lower() == "/base":
+                print("  [ERROR] Please provide a prompt after the command. Example: /base What is 2+2?")
+                continue
 
-        # --- GENERATION ---
-        t_gen = time.time()
-        response = manager.generate(prompt, domain)
-        gen_time = time.time() - t_gen
-        
-        word_count = len(response.split())
-        speed = word_count / gen_time if gen_time > 0 else 0
+            # --- ROUTING ---
+            t_route = time.time()
+            
+            sem_probs = router.semantic.predict_proba(prompt)
+            syn_probs = router.syntax.predict_proba(prompt)
+            
+            domain, rule, detailed_log = router.predict(prompt, verbose=False)
+            route_time = time.time() - t_route
+            
+            print("\n  [DEBUG: FULL CLASS PROBABILITIES]")
+            print("    Semantic Distribution:")
+            for k, v in sorted(sem_probs.items(), key=lambda item: item[1], reverse=True):
+                print(f"      - {k:<8}: {v:.4f}")
+                
+            print("    Syntax Distribution:")
+            for k, v in sorted(syn_probs.items(), key=lambda item: item[1], reverse=True):
+                print(f"      - {k:<8}: {v:.4f}")
+            
+            print(f"\n  [DEBUG: ROUTING DECISION] Predicted Domain: {domain.upper()} | Rule: {rule} | Time: {route_time:.3f}s")
+            print_profile(f"Routing Complete ({domain.upper()})", t_route)
 
-        print_profile("Generation Complete", t_gen)
-        
-        print("\n  [DEBUG: FINAL OUTPUT]")
-        print("-" * 50)
-        print(response)
-        print("-" * 50)
-        print(f"  [DEBUG: METRICS] Generation Time: {gen_time:.2f}s | Approx Speed: {speed:.1f} words/sec")
-        print("="*70)
+            # --- GENERATION ---
+            if bypass_lora:
+                print(f"\n[LLAMA 3.1 - BASE MODEL ONLY (Routed as {domain.upper()})]:")
+            else:
+                print(f"\n[LLAMA 3.1 - {domain.upper()} EXPERT]:")
+            print("-" * 50)
+            
+            t_gen = time.time()
+            
+            # --- THE INTERRUPT WRAPPER ---
+            try:
+                # Ensure inference_manager.py's generate function accepts bypass_lora
+                response = manager.generate(prompt, domain, stream=True, bypass_lora=bypass_lora)
+            except KeyboardInterrupt:
+                print("\n\n  [!] Generation interrupted by user.")
+                # Force PyTorch to release the VRAM from the aborted generation
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                print("="*70)
+                continue # Instantly skip the metrics and loop back to the [USER]: prompt
+            # -----------------------------
+            
+            gen_time = time.time() - t_gen
+            
+            print("-" * 50)
+            
+            word_count = len(response.split())
+            speed = word_count / gen_time if gen_time > 0 else 0
 
+            print_profile("Generation Complete", t_gen)
+            print(f"  [DEBUG: METRICS] Generation Time: {gen_time:.2f}s | Approx Speed: {speed:.1f} words/sec")
+            print("="*70)
+
+        except KeyboardInterrupt:
+            # If you press Ctrl+C while sitting at the empty [USER]: prompt, it exits the script
+            print("\nShutting down pipeline...")
+            break
+        except Exception as e:
+            print(f"\n[ERROR]: An unexpected error occurred: {e}")
 if __name__ == "__main__":
     main()

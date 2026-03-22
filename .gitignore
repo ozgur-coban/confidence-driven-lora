@@ -230,5 +230,7 @@ data/
 artifacts/
 logs/
 models/
+GEMINI.md
+.gemini/
 *.zip
 .ipynb_checkpoints/

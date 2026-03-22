@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextStreamer
 from peft import PeftModel
 from config.domain_registry import DOMAIN_REGISTRY
 
@@ -41,7 +41,7 @@ class InferenceManager:
             self.adapters_loaded = True
             print(f"Adapters loaded: {domain_names}")
 
-    def generate(self, user_prompt: str, domain: str) -> str:
+    def generate(self, user_prompt: str, domain: str, stream: bool = True, bypass_lora: bool = False) -> str:
         if domain not in self.registry:
             domain = "general"
 
@@ -54,18 +54,22 @@ class InferenceManager:
         prompt_str = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = self.tokenizer(prompt_str, return_tensors="pt").to(self.device)
 
-        if domain == "general" or not self.adapters_loaded:
+        streamer = TextStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True) if stream else None
+
+        # Check for the bypass_lora flag first
+        if bypass_lora or domain == "general" or not self.adapters_loaded:
             if self.adapters_loaded:
+                # Disables all LoRAs and uses the raw base model weights
                 with self.model.disable_adapter():
                     with torch.no_grad():
-                        outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id)
+                        outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, streamer=streamer)
             else:
                 with torch.no_grad():
-                    outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id)
+                    outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, streamer=streamer)
         else:
             self.model.set_adapter(domain)
             with torch.no_grad():
-                outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id)
+                outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, streamer=streamer)
 
         input_length = inputs["input_ids"].shape[1]
         response = self.tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
