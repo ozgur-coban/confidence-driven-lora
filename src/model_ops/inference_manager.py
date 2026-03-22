@@ -22,7 +22,7 @@ class InferenceManager:
         self.base_model = AutoModelForCausalLM.from_pretrained(
             base_model_id, 
             quantization_config=quant_config, 
-            device_map="auto"
+            device_map={"":0}
         )
 
         self.model = self.base_model

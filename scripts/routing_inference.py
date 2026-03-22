@@ -1,10 +1,17 @@
 import os
 import sys
+
+# --- WINDOWS LOCAL DEBUG FIX ---
+# Must be set BEFORE importing torch to prevent OpenMP DLL conflicts
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import time
 import torch
 import warnings
 import argparse
 import subprocess
+from dotenv import load_dotenv
+from huggingface_hub import login
 
 # Suppress Hugging Face warnings for clean debug logs
 warnings.filterwarnings("ignore")
@@ -23,14 +30,23 @@ def print_profile(step_name, start_time=None):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="End-to-End Pipeline Debug Test")
-    parser.add_argument("--code_adapter", type=str, default="/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_codefeedback_algo/final")
-    parser.add_argument("--math_adapter", type=str, default="/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_gsm8k/final")
-    parser.add_argument("--medical_adapter", type=str, default="/content/drive/MyDrive/capstone-project/training_results/adapters/adapter_medqa/final")
+    parser.add_argument("--code_adapter", type=str, default="./models/adapters/adapter_codefeedback_algo/final")
+    parser.add_argument("--math_adapter", type=str, default="./models/adapters/adapter_reasoning/final")
+    parser.add_argument("--medical_adapter", type=str, default="./models/adapters/adapter_medqa/final")
     return parser.parse_args()
 
 def main():
     args = parse_args()
+    # Load environment variables from .env file
+    load_dotenv()
     
+    hf_token = os.getenv("HF_TOKEN")
+    if hf_token:
+        print("  [AUTH] Hugging Face token found. Logging in...")
+        login(token=hf_token)
+    else:
+        print("  [WARNING] HF_TOKEN not found in .env file. Gated models will fail to load.")
+    # ---------------------------------------
     print("="*70)
     print("END-TO-END PIPELINE DEBUG TEST")
     print("="*70)
@@ -43,44 +59,45 @@ def main():
     t0 = time.time()
     router = HybridRouter()
     
-    # Attempt to load router artifacts; fallback to training if missing
-    try:
-        router.load(
-            semantic_path="models/semantic_centroids.npy", 
-            syntax_path="models/syntax_router.joblib"
-        )
-    except FileNotFoundError:
-        print("  [PROFILER] Router artifacts not found. Initiating training scripts...")
-        
-        # Inject the project root into the subprocess environment
-        env = os.environ.copy()
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        env["PYTHONPATH"] = f"{project_root}:{env.get('PYTHONPATH', '')}"
+    # Ensure router artifacts exist before trying to load them
+    semantic_path = "models/semantic_centroids.npy"
+    syntax_path = "models/syntax_router.joblib"
+    
+    if not (os.path.exists(semantic_path) and os.path.exists(syntax_path)):
+        print("\n  [ERROR] Router artifacts not found!")
+        print("  Please build them manually by running:")
+        print("    python -m scripts.build_semantic_router --enable_training")
+        print("    python -m scripts.build_syntax_router --enable_training\n")
+        sys.exit(1)
 
-        # Run the build scripts with the updated environment
-        subprocess.run([sys.executable, "scripts/build_semantic_router.py"], env=env, check=True)
-        subprocess.run([sys.executable, "scripts/build_syntax_router.py"], env=env, check=True)
-        
-        # Reload after successful build
-        router.load(
-            semantic_path="models/semantic_centroids.npy", 
-            syntax_path="models/syntax_router.joblib"
-        )
+    # Load artifacts safely
+    router.load(semantic_path=semantic_path, syntax_path=syntax_path)
         
     print_profile("Router Loaded", t0)
 
     t1 = time.time()
-    adapter_paths = {
+    raw_adapter_paths = {
         "code": args.code_adapter,
         "math": args.math_adapter,
         "medical": args.medical_adapter
     }
     
+    # Check which adapters actually exist to prevent PEFT crashes
+    valid_adapters = {}
+    for domain, path in raw_adapter_paths.items():
+        if os.path.exists(path):
+            valid_adapters[domain] = path
+        else:
+            print(f"  [WARNING] Missing adapter for '{domain}' at: {path}")
+
+    if not valid_adapters:
+        print("  [WARNING] No valid adapters found. Running in BASE MODEL ONLY mode.")
+
     manager = InferenceManager(
         base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
-        adapter_paths=adapter_paths
+        adapter_paths=valid_adapters
     )
-    print_profile("Base Model & All LoRAs Loaded", t1)
+    print_profile("Base Model & LoRAs Loaded", t1)
 
     # ---------------------------------------------------------
     # 2. TEST QUERIES
@@ -100,7 +117,6 @@ def main():
         # --- ROUTING ---
         t_route = time.time()
         
-        # Pull raw probability distributions directly from the sub-routers for deep debugging
         sem_probs = router.semantic.predict_proba(prompt)
         syn_probs = router.syntax.predict_proba(prompt)
         
@@ -124,7 +140,6 @@ def main():
         response = manager.generate(prompt, domain)
         gen_time = time.time() - t_gen
         
-        # Calculate approximate generation speed (words/sec is a rough proxy for tokens/sec here)
         word_count = len(response.split())
         speed = word_count / gen_time if gen_time > 0 else 0
 

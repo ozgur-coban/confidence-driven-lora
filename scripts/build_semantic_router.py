@@ -11,8 +11,8 @@ def parse_args():
     parser.add_argument(
         "--threshold", 
         type=float, 
-        default=0.35, 
-        help="Score threshold for routing (default: 0.35)"
+        default=0.25, 
+        help="Score threshold for routing (default: 0.25)"
     )
     return parser.parse_args()
 def main():
