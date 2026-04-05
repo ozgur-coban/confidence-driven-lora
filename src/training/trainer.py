@@ -47,16 +47,17 @@ class AdapterTrainer:
         )
 
     def train(
-        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10
+        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10, learning_rate: float = 2e-4
     ):
         """Initializes the Trainer and executes the training loop."""
-        args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps)
+        args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps, learning_rate)
         
         trainer = Trainer(
             model=self.model,
             args=args,
             train_dataset=self.train_dataset,
             data_collator=self.data_collator,
+
         )
         
         print(f"Starting training for {adapter_name} adapter...")
