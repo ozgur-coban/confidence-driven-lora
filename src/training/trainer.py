@@ -23,7 +23,7 @@ class AdapterTrainer:
         )
 
     def get_training_args(
-        self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int
+        self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int, learning_rate: float
     ) -> TrainingArguments:
         """Configures the hardware utilization and learning hyperparameters."""
         save_path = os.path.join(self.output_dir, adapter_name)
@@ -32,7 +32,7 @@ class AdapterTrainer:
             output_dir=save_path,
             per_device_train_batch_size=batch_size,
             gradient_accumulation_steps=grad_accum,
-            learning_rate=2e-4,
+            learning_rate=learning_rate,
             lr_scheduler_type="cosine",
             num_train_epochs=epochs,
             logging_steps=logging_steps,
