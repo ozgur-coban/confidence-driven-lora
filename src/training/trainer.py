@@ -42,7 +42,7 @@ class AdapterTrainer:
             optim="adamw_torch",
             max_grad_norm=0.3,
             warmup_ratio=0.03,
-            group_by_length=True,
+            # group_by_length=True,
             report_to="none" 
         )
 
