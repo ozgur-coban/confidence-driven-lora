@@ -2,6 +2,7 @@ import torch
 import argparse
 import json
 import os
+import re
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
@@ -16,9 +17,26 @@ def parse_args():
     return parser.parse_args()
 
 def extract_model_answer(text: str) -> str:
-    """Extracts the final answer occurring after ####."""
+    """Extracts the final answer, handling both strict LoRA formatting and base model fallbacks."""
+    # 1. Primary Check: The strict MoE format (For your trained LoRA)
     if "####" in text:
         return text.split("####")[-1].strip()
+        
+    # 2. Base Model Fallback 1: Standard Instruct phrasing
+    if "The final answer is:" in text:
+        ans = text.split("The final answer is:")[-1].strip()
+        # Strip common LaTeX formatting the base model uses (e.g., $\boxed{1}$ or $100$)
+        ans = ans.replace('$', '').replace('\\boxed{', '').replace('}', '').strip()
+        return ans
+        
+    # 3. Base Model Fallback 2: Conversational ending (Grabs the very last number)
+    numbers = re.findall(r'-?[\d,]+(?:\.\d+)?', text)
+    if numbers:
+        ans = numbers[-1].replace(',', '')
+        if ans.endswith('.'):
+            ans = ans[:-1]
+        return ans
+        
     return "Extraction Failed"
 
 def extract_ground_truth(text: str) -> str:
