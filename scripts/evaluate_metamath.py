@@ -1,0 +1,125 @@
+import torch
+import argparse
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import PeftModel
+from datasets import load_dataset
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Evaluate a trained LoRA adapter on MetaMathQA.")
+    parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
+    parser.add_argument("--adapter_path", type=str, required=True)
+    parser.add_argument("--num_samples", type=int, default=100, help="Number of test samples to evaluate.")
+    return parser.parse_args()
+
+def extract_model_answer(text: str) -> str:
+    """Extracts the final answer occurring after ####."""
+    if "####" in text:
+        return text.split("####")[-1].strip()
+    return "Extraction Failed"
+
+def extract_ground_truth(text: str) -> str:
+    """Extracts the explicit answer provided after 'The answer is: ' in MetaMathQA."""
+    if "The answer is:" in text:
+        return text.split("The answer is:")[-1].strip()
+    return "Extraction Failed"
+
+def main():
+    args = parse_args()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    print("1. Loading Tokenizer and Rebuilding Dataset Splits...")
+    tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
+    dataset = load_dataset("meta-math/MetaMathQA", split="train")
+    
+    # Replicate the exact preprocessor filtering and splitting to prevent data leakage
+    filtered_dataset = dataset.filter(
+        lambda x: (len(str(x["query"])) + len(str(x["response"]))) < 1800
+    )
+    dataset_15k = filtered_dataset.shuffle(seed=42).select(range(15000))
+    train_test_split = dataset_15k.train_test_split(test_size=5000, seed=42)
+    val_test_split = train_test_split['test'].train_test_split(test_size=3000, seed=42)
+    
+    # Select from the isolated 3,000 test samples
+    test_data = val_test_split['test'].shuffle(seed=42).select(range(args.num_samples))
+
+    print(f"2. Loading Base Model ({args.base_model_id}) in 4-bit...")
+    quant_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16 # Changed to float16 to match your training script
+    )
+
+    base_model = AutoModelForCausalLM.from_pretrained(
+        args.base_model_id,
+        quantization_config=quant_config,
+        device_map="auto"
+    )
+
+    print(f"3. Injecting LoRA Adapter from {args.adapter_path}...")
+    model = PeftModel.from_pretrained(base_model, args.adapter_path)
+    model.eval()
+
+    # # Bypass the adapter and assign the base model directly
+    # print("3. Bypassing adapter: Evaluating Base Model only...")
+    # model = base_model
+    # model.eval()
+
+    print(f"\n--- Starting Evaluation on {args.num_samples} Samples ---")
+    
+    correct_count = 0
+    failed_extraction_count = 0
+
+    for i, example in enumerate(tqdm(test_data, desc="Evaluating")):
+        messages = [
+            {"role": "system", "content": "You are a mathematical reasoning assistant. Solve the problem step-by-step and provide the final answer after ####."},
+            {"role": "user", "content": example["query"]}
+        ]
+        
+        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        inputs = tokenizer(prompt, return_tensors="pt").to(device)
+
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1024,
+                do_sample=False,
+                pad_token_id=tokenizer.eos_token_id
+            )
+        
+        input_length = inputs["input_ids"].shape[1]
+        generated_tokens = outputs[0][input_length:]
+        response = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        
+        extracted_ans = extract_model_answer(response)
+        ground_truth = extract_ground_truth(example["response"])
+
+        is_correct = extracted_ans == ground_truth
+        if extracted_ans == "Extraction Failed":
+            failed_extraction_count += 1
+        elif is_correct:
+            correct_count += 1
+
+        # Print the outputs directly to the console during the loop
+        tqdm.write(f"\n[Problem {i+1}]")
+        tqdm.write(f"Question: {example['query']}")
+        tqdm.write(f"\nModel Output:\n{response}")
+        tqdm.write("-" * 20)
+        tqdm.write(f"Extracted Model Answer: {extracted_ans}")
+        tqdm.write(f"Ground Truth Answer:    {ground_truth}")
+        tqdm.write(f"Correct:                {is_correct}")
+        tqdm.write("=" * 50)
+
+    # Print Final Statistics
+    accuracy = (correct_count / args.num_samples) * 100
+    print("\n" + "="*50)
+    print("FINAL EVALUATION METRICS")
+    print("="*50)
+    print(f"Total Samples Tested:  {args.num_samples}")
+    print(f"Correct Answers:       {correct_count}")
+    print(f"Failed Extractions:    {failed_extraction_count}")
+    print(f"Overall Accuracy:      {accuracy:.2f}%")
+    print("="*50)
+
+if __name__ == "__main__":
+    main()
