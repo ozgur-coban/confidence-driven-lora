@@ -27,16 +27,13 @@ class LoraManager:
         model.config.use_cache = False 
         return model
 
-    def get_peft_setup(self, model, r: int = 16, alpha: int = 32):
+    def get_peft_setup(self, model, r: int = 16, alpha: int = 32, target_modules: list = None):
         """Wraps the base model with the LoRA adapter configuration."""
         print("Injecting LoRA adapters...")
         config = LoraConfig(
             r=r,
             lora_alpha=alpha,
-            target_modules=[
-                "q_proj", "k_proj", "v_proj", "o_proj", 
-                "gate_proj", "up_proj", "down_proj"
-            ],
+            target_modules=target_modules,
             bias="none",
             task_type=TaskType.CAUSAL_LM,
             lora_dropout=0.0
