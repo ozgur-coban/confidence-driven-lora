@@ -1,3 +1,4 @@
+import unsloth
 import os, sys, ctypes
 
 # Fix for Windows DLL loading (fixes WinError 127)
