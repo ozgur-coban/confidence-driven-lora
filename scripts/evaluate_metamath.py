@@ -16,33 +16,82 @@ def parse_args():
     parser.add_argument("--output_file", type=str, default="artifacts/generated_results/metamath_eval_results.json")
     return parser.parse_args()
 
+def clean_math_string(s: str) -> str:
+    """Normalizes math outputs: safely unwraps \boxed{}, strips $, cleans commas, and parses sentences."""
+    s = s.strip()
+    
+    # Remove wrapping #### or spaces
+    s = re.sub(r'^#+', '', s)
+    s = re.sub(r'#+$', '', s)
+    s = s.strip()
+    
+    # Safely extract from \boxed{...} handling nested brackets
+    if '\\boxed{' in s:
+        start = s.find('\\boxed{') + 7
+        depth = 1
+        for i in range(start, len(s)):
+            if s[i] == '{': depth += 1
+            elif s[i] == '}': depth -= 1
+            if depth == 0:
+                s = s[start:i]
+                break
+                
+    s = s.strip('$ \n\t.')
+    
+    # Remove conversational prefixes
+    s = re.sub(r'^(The )?(final )?answer is\s*:?\s*', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'^Therefore,?\s*(the )?.*?\s+is\s*', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'^So,?\s*(the )?.*?\s+is\s*', '', s, flags=re.IGNORECASE)
+    
+    s = s.strip('$ \n\t.')
+    
+    # If it is a sentence containing the answer (e.g. "The theater sold 93 tickets")
+    # Only triggers if there are no math operators in the sentence.
+    if len(s) > 10 and not any(op in s for op in ['+', '-', '*', '/', '\\', '^', '=', 'x', 'y', 'z']):
+        nums = re.findall(r'-?[\d,]+(?:\.\d+)?', s)
+        if nums:
+            s = nums[-1]
+            
+    # Remove commas in numbers for comparison (e.g., 6,318 -> 6318)
+    if re.match(r'^-?[\d,]+(?:\.\d+)?$', s):
+        s = s.replace(',', '')
+        
+    return s.strip()
+
 def extract_model_answer(text: str) -> str:
     """Extracts the final answer, handling both strict LoRA formatting and base model fallbacks."""
-    # 1. Primary Check: The strict MoE format (For your trained LoRA)
+    ans = "Extraction Failed"
+    
+    # 1. Primary Check: The strict MoE format
     if "####" in text:
-        return text.split("####")[-1].strip()
+        parts = text.split("####")
+        # Handle cases like ####11#### by grabbing the first non-empty block after ####
+        ans = parts[1] if len(parts) > 1 and parts[1].strip() else parts[-1]
         
     # 2. Base Model Fallback 1: Standard Instruct phrasing
-    if "The final answer is:" in text:
-        ans = text.split("The final answer is:")[-1].strip()
-        # Strip common LaTeX formatting the base model uses (e.g., $\boxed{1}$ or $100$)
-        ans = ans.replace('$', '').replace('\\boxed{', '').replace('}', '').strip()
+    elif "The final answer is:" in text:
+        ans = text.split("The final answer is:")[-1]
+        
+    # 3. Base Model Fallback 2: "The answer is" phrasing
+    elif "The answer is:" in text:
+        ans = text.split("The answer is:")[-1]
+        
+    # 4. Base Model Fallback 3: Conversational ending
+    else:
+        numbers = re.findall(r'-?[\d,]+(?:\.\d+)?', text)
+        if numbers:
+            ans = numbers[-1]
+            
+    if ans == "Extraction Failed":
         return ans
         
-    # 3. Base Model Fallback 2: Conversational ending (Grabs the very last number)
-    numbers = re.findall(r'-?[\d,]+(?:\.\d+)?', text)
-    if numbers:
-        ans = numbers[-1].replace(',', '')
-        if ans.endswith('.'):
-            ans = ans[:-1]
-        return ans
-        
-    return "Extraction Failed"
+    return clean_math_string(ans)
 
 def extract_ground_truth(text: str) -> str:
     """Extracts the explicit answer provided after 'The answer is: ' in MetaMathQA."""
     if "The answer is:" in text:
-        return text.split("The answer is:")[-1].strip()
+        ans = text.split("The answer is:")[-1].strip()
+        return clean_math_string(ans) # Clean the ground truth too to ensure fair comparison
     return "Extraction Failed"
 
 def main():
