@@ -31,8 +31,8 @@ def print_profile(step_name, start_time=None):
 def parse_args():
     parser = argparse.ArgumentParser(description="End-to-End Pipeline Debug Test")
     parser.add_argument("--code_adapter", type=str, default="./models/adapters/adapter_codefeedback_algo/final")
-    # parser.add_argument("--math_adapter_gsm8k", type=str, default="./models/adapters/adapter_reasoning/final")
-    parser.add_argument("--math_adapter_metamath", type=str, default="./models/adapters/adapter_math_metamath/final")
+    parser.add_argument("--math_adapter", type=str, default="./models/adapters/adapter_reasoning/final")
+    # parser.add_argument("--math_adapter_metamath", type=str, default="./models/adapters/adapter_math_metamath/final")
     parser.add_argument("--medical_adapter", type=str, default="./models/adapters/adapter_medqa/final")
     return parser.parse_args()
 
@@ -79,8 +79,8 @@ def main():
     t1 = time.time()
     raw_adapter_paths = {
         "code": args.code_adapter,
-        # "math": args.math_adapter_gsm8k,
-        "math": args.math_adapter_metamath,
+        "math": args.math_adapter_gsm8k,
+        # "math": args.math_adapter_metamath,
         "medical": args.medical_adapter
     }
     
