@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import re
+from unsloth.chat_templates import get_chat_template
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
@@ -100,6 +101,12 @@ def main():
 
     print("1. Loading Tokenizer and Rebuilding Dataset Splits...")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
+    if tokenizer.chat_template is None:
+        print("Base model detected. Injecting Llama 3.1 chat template...")
+        tokenizer = get_chat_template(
+            tokenizer,
+            chat_template="llama-3.1"
+        )
     dataset = load_dataset("meta-math/MetaMathQA", split="train")
     
     # Replicate the exact preprocessor filtering and splitting to prevent data leakage
