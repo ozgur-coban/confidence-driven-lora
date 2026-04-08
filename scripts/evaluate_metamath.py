@@ -4,11 +4,9 @@ import json
 import os
 import re
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 from datasets import load_dataset
-from unsloth import FastLanguageModel
-from unsloth.chat_templates import get_chat_template
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained LoRA adapter or base model on MetaMathQA.")
@@ -102,12 +100,12 @@ def main():
 
     print("1. Loading Tokenizer and Rebuilding Dataset Splits...")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
+    
+    # Forcefully inject the Llama 3.1 template manually if missing
     if tokenizer.chat_template is None:
-        print("Base model detected. Injecting Llama 3.1 chat template...")
-        tokenizer = get_chat_template(
-            tokenizer,
-            chat_template="llama-3.1"
-        )
+        print("Base model detected. Injecting Llama 3.1 chat template manually...")
+        tokenizer.chat_template = "{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}{% if add_generation_prompt %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}{% endif %}"
+        
     dataset = load_dataset("meta-math/MetaMathQA", split="train")
     
     # Replicate the exact preprocessor filtering and splitting to prevent data leakage
@@ -123,23 +121,19 @@ def main():
     num_to_evaluate = len(full_test_set) if args.num_samples == -1 else min(args.num_samples, len(full_test_set))
     test_data = full_test_set.shuffle(seed=42).select(range(num_to_evaluate))
 
-    print(f"2. Loading Base Model: {args.base_model_id} via Unsloth in 4-bit...")
-    
-    # Unsloth handles the memory map, CPU offloading, and 4-bit quantization automatically
-    base_model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name = args.base_model_id,
-        max_seq_length = 512,
-        dtype = None, # Auto-detects float16 for Colab T4
-        load_in_4bit = True,
+    print(f"2. Loading Base Model: {args.base_model_id} in 4-bit...")
+    quant_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16 # Auto-detects float16 for Colab T4
     )
 
-    # Forcefully inject the Llama 3.1 template if missing
-    if tokenizer.chat_template is None:
-        print("Base model detected. Injecting Llama 3.1 chat template...")
-        tokenizer = get_chat_template(
-            tokenizer,
-            chat_template="llama-3.1"
-        )
+    base_model = AutoModelForCausalLM.from_pretrained(
+        args.base_model_id,
+        quantization_config=quant_config,
+        device_map={"": 0},            # Forces direct-to-GPU loading to bypass Colab CPU RAM limit
+        low_cpu_mem_usage=True         # Strictly limits System RAM staging
+    )
 
     if args.adapter_path:
         print(f"3. Injecting LoRA Adapter from {args.adapter_path}...")
@@ -148,8 +142,6 @@ def main():
         print("3. No adapter path provided. Bypassing adapter: Evaluating Base Model only...")
         model = base_model
         
-    # Unsloth magic: Optimizes the model for 2x faster generation
-    FastLanguageModel.for_inference(model) 
     model.eval()
 
     print(f"\n--- Starting Evaluation on {len(test_data)} Samples ---")
