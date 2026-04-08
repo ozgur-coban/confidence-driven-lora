@@ -126,13 +126,14 @@ def main():
     quant_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16
+        bnb_4bit_compute_dtype=torch.float16
     )
 
     base_model = AutoModelForCausalLM.from_pretrained(
         args.base_model_id,
         quantization_config=quant_config,
-        device_map="auto"
+        device_map={"": 0},            # <--- Forces direct-to-GPU loading
+        low_cpu_mem_usage=True         # <--- Strictly limits System RAM staging
     )
 
     if args.adapter_path:
