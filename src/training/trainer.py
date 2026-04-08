@@ -23,7 +23,7 @@ class AdapterTrainer:
         )
 
     def get_training_args(
-        self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int
+        self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int, learning_rate: float
     ) -> TrainingArguments:
         """Configures the hardware utilization and learning hyperparameters."""
         save_path = os.path.join(self.output_dir, adapter_name)
@@ -32,7 +32,7 @@ class AdapterTrainer:
             output_dir=save_path,
             per_device_train_batch_size=batch_size,
             gradient_accumulation_steps=grad_accum,
-            learning_rate=2e-4,
+            learning_rate=learning_rate,
             lr_scheduler_type="cosine",
             num_train_epochs=epochs,
             logging_steps=logging_steps,
@@ -42,21 +42,22 @@ class AdapterTrainer:
             optim="adamw_torch",
             max_grad_norm=0.3,
             warmup_ratio=0.03,
-            group_by_length=True,
+            # group_by_length=True,
             report_to="none" 
         )
 
     def train(
-        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10
+        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10, learning_rate: float = 2e-4
     ):
         """Initializes the Trainer and executes the training loop."""
-        args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps)
+        args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps, learning_rate)
         
         trainer = Trainer(
             model=self.model,
             args=args,
             train_dataset=self.train_dataset,
             data_collator=self.data_collator,
+
         )
         
         print(f"Starting training for {adapter_name} adapter...")

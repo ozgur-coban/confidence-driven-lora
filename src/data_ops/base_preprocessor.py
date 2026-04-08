@@ -72,10 +72,14 @@ class BasePreprocessor(ABC):
             
         # Map the formatting logic and drop the raw string columns (question, answer)
         formatted_dataset = self.dataset.map(
-            self.format_prompt, 
+            self.format_prompt,
             remove_columns=self.dataset["train"].column_names
         )
         
         # Map the tokenization and masking logic
         processed_dataset = formatted_dataset.map(self.tokenize_and_mask)
+        
+        # FILTER: Drop any sequence that reached the max_length limit to prevent training on truncated logic
+        processed_dataset = processed_dataset.filter(lambda x: len(x["input_ids"]) < self.max_length)
+        
         return processed_dataset

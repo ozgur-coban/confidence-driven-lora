@@ -16,6 +16,7 @@ from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
 from src.data_ops.codealpaca_preprocessor import CodeAlpacaPreprocessor
 from src.data_ops.medical_meadow_flashcards_preprocessor import MedicalMeadowFlashcardsPreprocessor
 from src.data_ops.medqa_preprocessor import MedQAPreprocessor
+from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
 
@@ -32,7 +33,13 @@ def parse_args():
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--output_dir", type=str, default="./artifacts/adapters", help="Base directory to save the trained adapters.")
 
-    parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k","medalpaca/medical_meadow_medical_flashcards","GBaker/MedQA-USMLE-4-options"], required=True, 
+    # LORA arguments
+    parser.add_argument("--r", type=int, default=16, help="LoRA rank.")
+    parser.add_argument("--lora_alpha", type=int, default=32, help="LoRA alpha.")
+    parser.add_argument("--target_modules", nargs="+", default=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], help="List of target modules for LoRA.")
+    parser.add_argument("--learning_rate", type=float, default=2e-4, help="Peak learning rate.")
+
+    parser.add_argument("--dataset", type=str, choices=["openai/gsm8k", "sahil2801/CodeAlpaca-20k","medalpaca/medical_meadow_medical_flashcards","GBaker/MedQA-USMLE-4-options","meta-math/MetaMathQA"], required=True, 
                         help="Which dataset/domain to train on.")
     
     return parser.parse_args()
@@ -55,6 +62,8 @@ def main():
         preprocessor = MedicalMeadowFlashcardsPreprocessor(tokenizer, max_length=args.max_length)
     elif args.dataset == "GBaker/MedQA-USMLE-4-options":
         preprocessor = MedQAPreprocessor(tokenizer, max_length=args.max_length)
+    elif args.dataset == "meta-math/MetaMathQA":
+        preprocessor= MetaMathPreprocessor(tokenizer, max_length=args.max_length)
     else:
         raise ValueError("Invalid dataset selected.")
     processed_dataset = preprocessor.process()
@@ -65,14 +74,19 @@ def main():
     print("Initializing model architecture...")
     lora_manager = LoraManager(model_id=args.model_id)
     base_model = lora_manager.load_base_model()
-    peft_model = lora_manager.get_peft_setup(base_model)
+    peft_model = lora_manager.get_peft_setup(
+        base_model, 
+        r=args.r, 
+        alpha=args.lora_alpha, 
+        target_modules=args.target_modules
+    )
 
     # 4. Execute Training
     trainer = AdapterTrainer(
         model=peft_model,
         tokenizer=tokenizer,
         train_dataset=train_data,
-        output_dir=args.output_dir  # <--- FIXED: Now pulls from CLI args
+        output_dir=args.output_dir,
     )
     
     trainer.train(
@@ -80,7 +94,8 @@ def main():
         batch_size=args.batch_size,
         grad_accum=args.grad_accum,
         epochs=args.epochs,
-        logging_steps=args.logging_steps
+        logging_steps=args.logging_steps,
+        learning_rate=args.learning_rate
     )
     print("--- Pipeline Execution Complete ---")
 
