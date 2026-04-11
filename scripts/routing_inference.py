@@ -1,5 +1,16 @@
 import os
 import sys
+import signal
+
+# --- SSH CTRL+C WORKAROUND ---
+def ssh_interrupt_handler(signum, frame):
+    raise KeyboardInterrupt()
+try:
+    # Maps Ctrl+\ (SIGQUIT) to act exactly like Ctrl+C
+    signal.signal(signal.SIGQUIT, ssh_interrupt_handler)
+except AttributeError:
+    pass # Ignore on Windows if testing locally
+# -----------------------------
 
 # --- WINDOWS LOCAL DEBUG FIX ---
 # Must be set BEFORE importing torch to prevent OpenMP DLL conflicts
@@ -79,7 +90,7 @@ def main():
     t1 = time.time()
     raw_adapter_paths = {
         "code": args.code_adapter,
-        "math": args.math_adapter_gsm8k,
+        "math": args.math_adapter,
         # "math": args.math_adapter_metamath,
         "medical": args.medical_adapter
     }

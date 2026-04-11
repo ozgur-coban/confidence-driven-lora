@@ -2,14 +2,14 @@ import os
 from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq
 
 class AdapterTrainer:
-    def __init__(self, model, tokenizer, train_dataset, output_dir: str = "./artifacts/adapters"):
+    def __init__(self, model, tokenizer, train_dataset, output_dir: str = "./models/adapters"):
         self.model = model
         self.tokenizer = tokenizer
         self.train_dataset = train_dataset
         self.output_dir = output_dir
 
         # Llama 3 specifically lacks a pad token by default. 
-        # We assign it to the EOS token to prevent tensor shape errors during batching.
+        # Assign it to the EOS token to prevent tensor shape errors during batching.
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 

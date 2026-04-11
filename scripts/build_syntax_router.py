@@ -4,7 +4,7 @@ import os
 import argparse
 import numpy as np
 from src.router.syntax_router import SyntaxRouter
-from src.data_ops.dataset_manager import DatasetManager
+from src.data_ops.routing_dataset_manager import DatasetManager
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train and/or Evaluate Syntax Router.")
