@@ -5,24 +5,29 @@ import argparse
 import numpy as np
 from src.router.syntax_router import SyntaxRouter
 from src.data_ops.routing_dataset_manager import DatasetManager
+from config.router_dataset_configs import ROUTER_DATASET_CONFIGS
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train and/or Evaluate Syntax Router.")
     parser.add_argument("--enable_training", action="store_true", help="Fit new vectorizer/classifier and save.")
+    parser.add_argument("--specialist_samples", type=int, default=6000, help="Number of specialist samples to use for training.")
     return parser.parse_args()
 
 def main():
     args = parse_args()
     
     router = SyntaxRouter()
-    data_manager = DatasetManager()
+    general_datasets=ROUTER_DATASET_CONFIGS.get("local_paths")
+    domain_rules=ROUTER_DATASET_CONFIGS.get("domain_rules")
+    data_manager = DatasetManager(local_paths=general_datasets, domain_configs=domain_rules)
 
     if args.enable_training:
         print("\n1. Fetching Training Data from Data Manager...")
         # You can tweak the General mixture here. 
         # 50k total (25k SQuAD + 25k UltraChat) is a massive, balanced background.
         training_data = data_manager.get_training_data(
-            specialist_samples=6000, 
+            specialist_samples=args.specialist_samples, 
             squad_samples=100000, 
             ultra_samples=150000
         )

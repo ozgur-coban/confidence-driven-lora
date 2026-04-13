@@ -3,11 +3,12 @@ import os
 from datasets import load_dataset
 
 class DatasetManager:
-    def __init__(self, 
-                 clean_squad_path="data/filtered/clean_squad.json", 
-                 clean_ultra_path="data/filtered/clean_ultrachat.json"):
-        self.clean_squad_path = clean_squad_path
-        self.clean_ultra_path = clean_ultra_path
+    def __init__(self, local_paths=dict,
+                   domain_configs=dict):
+        self.clean_squad_path =local_paths.get("squad")
+        self.clean_ultra_path =local_paths.get("ultrachat")
+        self.domain_configs = domain_configs
+
 
     def _load_json(self, filepath):
         if not os.path.exists(filepath):
@@ -15,48 +16,35 @@ class DatasetManager:
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
 
-    def get_training_data(self, specialist_samples=6000, squad_samples=25000, ultra_samples=25000):
-        """
-        Builds the training dictionary. 
-        Mixes SQuAD (Trivia/Facts) and UltraChat (AI Instructions) for a massive, robust General domain.
-        """
-        print(f"Loading Hugging Face Specialist Datasets ({specialist_samples} each)...")
-        math_ds = load_dataset("openai/gsm8k", "main", split="train")
-        code_ds = load_dataset("m-a-p/CodeFeedback-Filtered-Instruction", split="train")
-        med_ds = load_dataset("GBaker/MedQA-USMLE-4-options", split="train")
+    def get_training_data(self, specialist_samples: int = 6000, squad_samples: int = 25000, ultra_samples: int = 25000,general_samples:int=6000) -> dict:
+        """Dynamically loads training data based on injected configuration."""
+        training_dict = {}
 
-        print(f"Loading Local Cleaned General Datasets ({squad_samples} SQuAD, {ultra_samples} UltraChat)...")
+        print(f"Loading Hugging Face Specialist Datasets ({specialist_samples} each)...")
+        for domain, config in self.domain_configs.items():
+            ds = load_dataset(config["path"], config.get("name"), split=config.get("train_split", "train"))
+            # Dynamically grab the correct column (e.g., 'question' or 'query')
+            col = config["column"]
+            if domain == "general":
+                training_dict[domain] = [item[col] for item in ds.select(range(general_samples))]
+            else:
+                training_dict[domain] = [item[col] for item in ds.select(range(specialist_samples))]
+
+        print(f"Loading Local General Datasets ({squad_samples} SQuAD, {ultra_samples} UltraChat)...")
         squad_data = self._load_json(self.clean_squad_path)
         ultra_data = self._load_json(self.clean_ultra_path)
+        if "general" not in training_dict:
+            training_dict["general"] = []
+        training_dict["general"] += squad_data[:squad_samples] + ultra_data[:ultra_samples]
 
-        # Safely slice the data
-        general_train = squad_data[:squad_samples] + ultra_data[:ultra_samples]
-
-        return {
-            "math": [item['question'] for item in math_ds.select(range(specialist_samples))],
-            "code": [item['query'] for item in code_ds.select(range(specialist_samples))],
-            "medical": [item['question'] for item in med_ds.select(range(specialist_samples))],
-            "general": general_train
-        }
-
-    def get_testing_data(self, test_samples=500, specialist_offset=6000):
-        """
-        Builds the testing dictionary.
-        Uses pure UltraChat for the General test to simulate realistic user queries.
-        Grabs from the END of the arrays to ensure zero data leakage from training.
-        """
-        math_ds = load_dataset("openai/gsm8k", "main", split="train")
-        code_ds = load_dataset("m-a-p/CodeFeedback-Filtered-Instruction", split="train")
-        med_ds = load_dataset("GBaker/MedQA-USMLE-4-options", split="train")
-
-        ultra_data = self._load_json(self.clean_ultra_path)
+        return training_dict
+    def get_testing_data(self, test_samples:int=500, specialist_offset:int=6000):
+        testing_dict={}
+        for domain, config in self.domain_configs.items():
+            ds = load_dataset(config["path"], config.get("name"), split=config.get("test_split", "test"))
+            col = config["column"]
+            testing_dict[domain] = [item[col] for item in ds.select(range(specialist_offset, specialist_offset + test_samples))]
+        testing_dict["general"] = self._load_json(self.clean_squad_path)[-test_samples:]
+        return testing_dict
+    
         
-        # Grab from the very back of the array
-        general_test = ultra_data[-test_samples:]
-
-        return {
-            "math": [item['question'] for item in math_ds.select(range(specialist_offset, specialist_offset + test_samples))],
-            "code": [item['query'] for item in code_ds.select(range(specialist_offset, specialist_offset + test_samples))],
-            "medical": [item['question'] for item in med_ds.select(range(specialist_offset, specialist_offset + test_samples))],
-            "general": general_test
-        }
