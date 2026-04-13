@@ -3,26 +3,28 @@ from transformers import AutoTokenizer
 from .base_preprocessor import BasePreprocessor
 
 class MedQAPreprocessor(BasePreprocessor):
+    def __init__(self, tokenizer: AutoTokenizer, max_length: int=512,data_size:int=7500):
+        super().__init__(tokenizer, max_length)
+        self.data_size=data_size
+        
     def load_data(self) -> DatasetDict:
         """Loads MedQA USMLE, filters by strict token length, shuffles, and subsets."""
         raw_dataset = load_dataset("GBaker/MedQA-USMLE-4-options", split="train")
         
-        # 1. Initialize tokenizer for accurate length checking
-        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
         
         # 2. Filter logic: Drop anything that exceeds 512 tokens
         def is_within_length(example):
             messages = self.format_prompt(example)["messages"]
-            full_text = tokenizer.apply_chat_template(messages, tokenize=False)
-            return len(tokenizer.encode(full_text)) <= 512
+            full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
+            return len(self.tokenizer.encode(full_text)) <= self.max_length
             
-        print("Filtering MedQA dataset for max_seq_length <= 512...")
+        print(f"Filtering MedQA dataset for max_seq_length <={self.max_length}")
         filtered_dataset = raw_dataset.filter(is_within_length, num_proc=4)
         print(f"Dropped {len(raw_dataset) - len(filtered_dataset)} oversized rows.")
         
         # 3. Shuffle and take subset (handling case if filtered data is < 7500)
         shuffled_dataset = filtered_dataset.shuffle(seed=42)
-        subset_size = min(7500, len(shuffled_dataset))
+        subset_size = min(self.data_size, len(shuffled_dataset))
         subset_dataset = shuffled_dataset.select(range(subset_size))
         
         # 4. Split 5% for evaluation

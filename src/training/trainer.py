@@ -2,10 +2,11 @@ import os
 from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq
 
 class AdapterTrainer:
-    def __init__(self, model, tokenizer, train_dataset, output_dir: str = "./models/adapters"):
+    def __init__(self, model, tokenizer, train_dataset, eval_dataset=None, output_dir: str = "./models/adapters"):
         self.model = model
         self.tokenizer = tokenizer
         self.train_dataset = train_dataset
+        self.eval_dataset = eval_dataset# Initialize eval_dataset
         self.output_dir = output_dir
 
         # Llama 3 specifically lacks a pad token by default. 
@@ -37,6 +38,7 @@ class AdapterTrainer:
             num_train_epochs=epochs,
             logging_steps=logging_steps,
             save_strategy="epoch",
+            eval_strategy="epoch",
             fp16=True,  
             bf16=False, 
             optim="adamw_torch",
@@ -56,6 +58,7 @@ class AdapterTrainer:
             model=self.model,
             args=args,
             train_dataset=self.train_dataset,
+            eval_dataset=self.eval_dataset,
             data_collator=self.data_collator,
 
         )

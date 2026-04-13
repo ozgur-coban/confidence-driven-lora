@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument("--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
     parser.add_argument("--adapter_name", type=str, required=True)
     parser.add_argument("--max_length", type=int, default=384)
+    parser.add_argument("--data_size", type=int, default=7500)
     
     # NEW CLI ARGUMENTS
     parser.add_argument("--batch_size", type=int, default=4)
@@ -55,20 +56,25 @@ def main():
     # 2. Preprocess Data
     print("Initializing Preprocessor...")
     if args.dataset == "openai/gsm8k":
-        preprocessor = GSM8KPreprocessor(tokenizer, max_length=args.max_length)
+        preprocessor = GSM8KPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
     elif args.dataset == "sahil2801/CodeAlpaca-20k":
-        preprocessor = CodeAlpacaPreprocessor(tokenizer, max_length=args.max_length)
+        preprocessor = CodeAlpacaPreprocessor(tokenizer, max_length=args.max_length,data_size=args.data_size)
     elif args.dataset == "medalpaca/medical_meadow_medical_flashcards":
         preprocessor = MedicalMeadowFlashcardsPreprocessor(tokenizer, max_length=args.max_length)
     elif args.dataset == "GBaker/MedQA-USMLE-4-options":
-        preprocessor = MedQAPreprocessor(tokenizer, max_length=args.max_length)
+        preprocessor = MedQAPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
     elif args.dataset == "meta-math/MetaMathQA":
-        preprocessor= MetaMathPreprocessor(tokenizer, max_length=args.max_length)
+        preprocessor= MetaMathPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
     else:
         raise ValueError("Invalid dataset selected.")
     processed_dataset = preprocessor.process()
     train_data = processed_dataset["train"]
+    if("validation" in processed_dataset):
+        eval_data = processed_dataset["validation"]
+    else:
+        eval_data = processed_dataset["test"]
     print(f"Training dataset ready: {len(train_data)} samples.")
+    print(f"Evaluation dataset ready: {len(eval_data)} samples.")
 
     # 3. Setup Model Architecture
     print("Initializing model architecture...")
@@ -86,6 +92,7 @@ def main():
         model=peft_model,
         tokenizer=tokenizer,
         train_dataset=train_data,
+        eval_dataset=eval_data,
         output_dir=args.output_dir,
     )
     
