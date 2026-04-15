@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
-    parser.add_argument("--output_dir", type=str, default="./artifacts/adapters", help="Base directory to save the trained adapters.")
+    parser.add_argument("--output_dir", type=str, default="./models/adapters", help="Base directory to save the trained adapters.")
 
     # LORA arguments
     parser.add_argument("--r", type=int, default=16, help="LoRA rank.")

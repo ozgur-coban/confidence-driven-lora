@@ -19,7 +19,11 @@ class GSM8KPreprocessor(BasePreprocessor):
         shuffled_dataset=filtered_dataset.shuffle(seed=42)
         subset_size=min(self.data_size,len(shuffled_dataset))
         subset_dataset=shuffled_dataset.select(range(subset_size))
-        self.dataset=subset_dataset.train_test_split(test_size=0.05,seed=42)
+        split_data=subset_dataset.train_test_split(test_size=0.05,seed=42)
+        self.dataset=DatasetDict({
+            'train':split_data['train'],
+            'validation':split_data['test']
+        })
         return self.dataset
 
     def format_prompt(self, example: dict) -> dict:

@@ -33,7 +33,7 @@ class MetaMathPreprocessor(BasePreprocessor):
         self.shuffled_dataset = DatasetDict({
             'train': train_test_split['train'],          # 10,000 samples
             'validation': val_test_split['train'],       # 2,000 samples
-            'test': val_test_split['test']               # 3,000 samples
+            # 'test': val_test_split['test']               # 3,000 samples
         })
         return self.shuffled_dataset
 
