@@ -100,6 +100,12 @@ def main():
 
     print("1. Loading Tokenizer and Rebuilding Dataset Splits...")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
+    
+    # Forcefully inject the Llama 3.1 template manually if missing
+    if tokenizer.chat_template is None:
+        print("Base model detected. Injecting Llama 3.1 chat template manually...")
+        tokenizer.chat_template = "{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}{% if add_generation_prompt %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}{% endif %}"
+        
     dataset = load_dataset("meta-math/MetaMathQA", split="train")
     
     # Replicate the exact preprocessor filtering and splitting to prevent data leakage
@@ -119,13 +125,14 @@ def main():
     quant_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16
+        bnb_4bit_compute_dtype=torch.float16 # Auto-detects float16 for Colab T4
     )
 
     base_model = AutoModelForCausalLM.from_pretrained(
         args.base_model_id,
         quantization_config=quant_config,
-        device_map="auto"
+        device_map={"": 0},            # Forces direct-to-GPU loading to bypass Colab CPU RAM limit
+        low_cpu_mem_usage=True         # Strictly limits System RAM staging
     )
 
     if args.adapter_path:

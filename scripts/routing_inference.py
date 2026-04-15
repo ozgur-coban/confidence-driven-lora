@@ -1,5 +1,16 @@
 import os
 import sys
+import signal
+
+# --- SSH CTRL+C WORKAROUND ---
+def ssh_interrupt_handler(signum, frame):
+    raise KeyboardInterrupt()
+try:
+    # Maps Ctrl+\ (SIGQUIT) to act exactly like Ctrl+C
+    signal.signal(signal.SIGQUIT, ssh_interrupt_handler)
+except AttributeError:
+    pass # Ignore on Windows if testing locally
+# -----------------------------
 
 # --- WINDOWS LOCAL DEBUG FIX ---
 # Must be set BEFORE importing torch to prevent OpenMP DLL conflicts
@@ -32,6 +43,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="End-to-End Pipeline Debug Test")
     parser.add_argument("--code_adapter", type=str, default="./models/adapters/adapter_codefeedback_algo/final")
     parser.add_argument("--math_adapter", type=str, default="./models/adapters/adapter_reasoning/final")
+    # parser.add_argument("--math_adapter_metamath", type=str, default="./models/adapters/adapter_math_metamath/final")
     parser.add_argument("--medical_adapter", type=str, default="./models/adapters/adapter_medqa/final")
     return parser.parse_args()
 
@@ -79,6 +91,7 @@ def main():
     raw_adapter_paths = {
         "code": args.code_adapter,
         "math": args.math_adapter,
+        # "math": args.math_adapter_metamath,
         "medical": args.medical_adapter
     }
     

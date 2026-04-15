@@ -2,6 +2,10 @@ from datasets import load_dataset, DatasetDict
 from .base_preprocessor import BasePreprocessor
 
 class CodeAlpacaPreprocessor(BasePreprocessor):
+    def __init__(self, tokenizer, max_length=512, data_size=7500):
+        super().__init__(tokenizer, max_length)
+        self.data_size=data_size
+        
     def load_data(self) -> DatasetDict:
         raw_dataset = load_dataset("sahil2801/CodeAlpaca-20k", split="train")
         
@@ -15,11 +19,18 @@ class CodeAlpacaPreprocessor(BasePreprocessor):
         def has_code(example):
             output = str(example["output"])
             return any(kw in output for kw in code_signals)
-            
-        filtered_dataset = raw_dataset.filter(has_code)
+        def is_within_length(example):
+            messages = self.format_prompt(example)
+            full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
+            return len(self.tokenizer.encode(full_text)) <= self.max_length
+        
+        code_filtered_dataset = raw_dataset.filter(has_code)
+        filtered_dataset=code_filtered_dataset.filter(is_within_length,num_proc=4)
+        
+        subset_size=min(self.data_size,len(filtered_dataset))
         
         # 2. Shuffle and subset to match GSM8K volume (7,500 rows)
-        subset = filtered_dataset.shuffle(seed=42).select(range(7500))
+        subset = filtered_dataset.shuffle(seed=42).select(range(subset_size))
         
         # 3. Final Split
         self.dataset = subset.train_test_split(test_size=0.05, seed=42)

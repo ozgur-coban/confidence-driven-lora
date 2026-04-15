@@ -11,7 +11,10 @@ class MedicalMeadowFlashcardsPreprocessor(BasePreprocessor):
         subset_dataset = shuffled_dataset.select(range(7500))
         
         # Split 5% for evaluation
-        self.dataset = subset_dataset.train_test_split(test_size=0.05, seed=42)
+        split_data = subset_dataset.train_test_split(test_size=0.05, seed=42)
+        self.dataset = DatasetDict({
+            'train': split_data['train'],
+            'validation': split_data['test']})
         return self.dataset
 
     def format_prompt(self, example: dict) -> dict:
