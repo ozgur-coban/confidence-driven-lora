@@ -18,7 +18,7 @@ class CustomCompletionCollator(DataCollatorForSeq2Seq):
         for i in range(labels.shape[0]):
             label_seq = labels[i].tolist()
             match_idx = -1
-            for j in range(len(label_seq) - template_len):
+            for j in range(len(label_seq) - template_len+1):
                 if label_seq[j : j + template_len] == self.response_template_ids:
                     match_idx = j + template_len
                     break
@@ -41,7 +41,7 @@ class AdapterTrainer:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         response_template="\n\nAnswer: "
-        template_ids=self.tokenizer.encode(response_template, add_special_tokens=False)[1:]
+        template_ids=self.tokenizer.encode(response_template, add_special_tokens=False)
 
 
         self.data_collator = CustomCompletionCollator(
@@ -49,7 +49,6 @@ class AdapterTrainer:
             tokenizer=self.tokenizer,
             model=self.model,
             padding=True,
-            mlm=False,
             return_tensors="pt"
         )
 
