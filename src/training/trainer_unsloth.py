@@ -45,7 +45,7 @@ class AdapterTrainer:
 
 
         self.data_collator = CustomCompletionCollator(
-            response_template=template_ids,
+            response_template_ids=template_ids,
             tokenizer=self.tokenizer,
             model=self.model,
             padding=True,
