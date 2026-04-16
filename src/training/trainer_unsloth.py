@@ -11,14 +11,26 @@ class CustomCompletionCollator(DataCollatorForSeq2Seq):
         self.response_template_ids = response_template_ids
 
     def __call__(self, features, return_tensors=None):
+        # 1. Let Seq2Seq collator handle dynamic padding first
         batch = super().__call__(features, return_tensors)
+        
+        # 2. FIX: Causal LM requires labels to be a copy of input_ids. 
+        # If they don't exist, create them.
+        if "labels" not in batch or batch["labels"] is None:
+            batch["labels"] = batch["input_ids"].clone()
+            
         labels = batch["labels"].clone()
         template_len = len(self.response_template_ids)
         
+        # 3. FIX: Ensure any padding tokens added by the collator are ignored in the loss calculation
+        if self.tokenizer is not None and self.tokenizer.pad_token_id is not None:
+            labels[labels == self.tokenizer.pad_token_id] = -100
+        
+        # 4. Search for the template and mask the prompt
         for i in range(labels.shape[0]):
             label_seq = labels[i].tolist()
             match_idx = -1
-            for j in range(len(label_seq) - template_len+1):
+            for j in range(len(label_seq) - template_len + 1):
                 if label_seq[j : j + template_len] == self.response_template_ids:
                     match_idx = j + template_len
                     break
