@@ -24,13 +24,15 @@ def parse_args():
     parser.add_argument("--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B")
     parser.add_argument("--adapter_name", type=str, required=True)
     parser.add_argument("--max_length", type=int, default=512)
+    parser.add_argument("--data_size", type=int, default=15000)
     
     # Training Arguments
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
-    parser.add_argument("--output_dir", type=str, default="./artifacts/adapters")
+    parser.add_argument("--output_dir", type=str, default="./models/adapters", help="Base directory to save the trained adapters.")
+    parser.add_argument("--eval_steps", type=int, default=200, help="Number of steps between evaluations.")
 
     # LoRA Arguments
     parser.add_argument("--r", type=int, default=16)
@@ -92,7 +94,8 @@ def main():
         grad_accum=args.grad_accum,
         epochs=args.epochs,
         logging_steps=args.logging_steps,
-        learning_rate=args.learning_rate
+        learning_rate=args.learning_rate,
+        eval_steps=args.eval_steps
     )
     print("--- Unsloth Pipeline Execution Complete ---")
 
