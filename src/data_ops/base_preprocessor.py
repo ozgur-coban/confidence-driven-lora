@@ -57,7 +57,7 @@ class BasePreprocessor(ABC):
     def process(self) -> DatasetDict:
         """Executes the data pipeline across the train and test splits."""
         if self.dataset is None:
-            self.load_data()
+            self.dataset=self.load_data()
             
         # Map the formatting logic and drop the raw string columns (question, answer)
         formatted_dataset = self.dataset.map(
