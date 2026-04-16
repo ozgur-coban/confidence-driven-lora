@@ -1,8 +1,35 @@
 import os
-from transformers import Trainer, TrainingArguments
-from trl import DataCollatorForCompletionOnlyLM
+from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq
 from unsloth import is_bfloat16_supported
+class CustomCompletionCollator(DataCollatorForSeq2Seq):
+    """
+    A lightweight, dependency-free replacement for TRL's DataCollatorForCompletionOnlyLM.
+    Inherits padding logic from Seq2Seq, then manually applies -100 masking to prompts.
+    """
+    def __init__(self, response_template_ids: list, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.response_template_ids = response_template_ids
 
+    def __call__(self, features, return_tensors=None):
+        batch = super().__call__(features, return_tensors)
+        labels = batch["labels"].clone()
+        template_len = len(self.response_template_ids)
+        
+        for i in range(labels.shape[0]):
+            label_seq = labels[i].tolist()
+            match_idx = -1
+            for j in range(len(label_seq) - template_len):
+                if label_seq[j : j + template_len] == self.response_template_ids:
+                    match_idx = j + template_len
+                    break
+            
+            if match_idx != -1:
+                labels[i, :match_idx] = -100
+            else:
+                labels[i, :] = -100
+                
+        batch["labels"] = labels
+        return batch
 class AdapterTrainer:
     def __init__(self, model, tokenizer, train_dataset, eval_dataset=None, output_dir: str = "./models/adapters"):
         self.model = model
@@ -17,9 +44,11 @@ class AdapterTrainer:
         template_ids=self.tokenizer.encode(response_template, add_special_tokens=False)[1:]
 
 
-        self.data_collator = DataCollatorForCompletionOnlyLM(
+        self.data_collator = CustomCompletionCollator(
             response_template=template_ids,
             tokenizer=self.tokenizer,
+            model=self.model,
+            padding=True,
             mlm=False,
             return_tensors="pt"
         )
