@@ -18,7 +18,7 @@ from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
 
 # These now import your Unsloth-refactored classes
 from src.model_ops.lora_manager_unsloth import LoraManager
-from src.training.trainer import AdapterTrainer
+from src.training.trainer_unsloth import AdapterTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a single-domain LoRA adapter with Unsloth.")
