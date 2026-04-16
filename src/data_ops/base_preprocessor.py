@@ -21,37 +21,19 @@ class BasePreprocessor(ABC):
 
     def tokenize_and_mask(self, example: dict) -> dict:
         """
-        Applies chat template, tokenizes, truncates, and masks the prompt labels.
+        Tokenizes the sequence. Label masking is now deferred to the TRL DataCollator.
         """
-        # 1. Apply the template to get the raw text string
         prompt_str = example["text"]
 
-        # 2. Tokenize the string into integer IDs
         tokenized = self.tokenizer(
             prompt_str,
             truncation=True,
             max_length=self.max_length,
-            padding=False, # Padding happens dynamically during batching
-            add_special_tokens=True # Chat template already added the structural tokens
+            padding=False, 
+            add_special_tokens=True 
         )
         
-        input_ids = tokenized["input_ids"]
-        labels = input_ids.copy()
-        
-#3. Mask the labels using the string-split boundary method (highly robust)
-        if self.response_template and self.response_template in prompt_str:
-            # Reconstruct just the prompt portion
-            prompt_only = prompt_str.split(self.response_template)[0] + self.response_template
-            
-            # Count exactly how many tokens make up the prompt
-            prompt_token_len = len(self.tokenizer.encode(prompt_only, add_special_tokens=True))
-            
-            # Overwrite all prompt tokens with -100 so loss is only calculated on the answer
-            labels[:prompt_token_len] = [-100] * prompt_token_len
-        else:
-            # Fallback: Mask everything if the template isn't found
-            labels = [-100] * len(labels)            
-        tokenized["labels"] = labels
+        # We no longer create the "labels" array here.
         return tokenized
 
     def process(self) -> DatasetDict:

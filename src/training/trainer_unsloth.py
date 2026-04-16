@@ -1,5 +1,6 @@
 import os
-from transformers import Trainer, TrainingArguments, DataCollatorForSeq2Seq
+from transformers import Trainer, TrainingArguments
+from trl import DataCollatorForCompletionOnlyLM
 from unsloth import is_bfloat16_supported
 
 class AdapterTrainer:
@@ -12,11 +13,14 @@ class AdapterTrainer:
 
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        response_template="\n\nAnswer: "
+        template_ids=self.tokenizer.encode(response_template, add_special_tokens=False)[1:]
 
-        self.data_collator = DataCollatorForSeq2Seq(
+
+        self.data_collator = DataCollatorForCompletionOnlyLM(
+            response_template=template_ids,
             tokenizer=self.tokenizer,
-            model=self.model,
-            padding=True,
+            mlm=False,
             return_tensors="pt"
         )
 
@@ -47,6 +51,7 @@ class AdapterTrainer:
             load_best_model_at_end=True,
             metric_for_best_model="loss",
             greater_is_better=False,
+            dataloader_num_workers=2,
             report_to="none" 
         )
 

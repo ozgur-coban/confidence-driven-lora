@@ -1,7 +1,8 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextStreamer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextStreamer, StoppingCriteriaList
 from peft import PeftModel
 from config.domain_registry import DOMAIN_REGISTRY
+from src.model_ops.stopping_criteria import KeywordStoppingCriteria
 
 class InferenceManager:
     def __init__(self, base_model_id="meta-llama/Meta-Llama-3.1-8B", adapter_paths=None):
@@ -52,21 +53,23 @@ class InferenceManager:
         inputs = self.tokenizer(prompt_str, return_tensors="pt").to(self.device)
 
         streamer = TextStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True) if stream else None
-
+        stop_words = ["\nHuman:", "\nQuestion:", "\nRequirement:", "\nCase/Query:"]
+        stop_criteria = KeywordStoppingCriteria(stop_words, self.tokenizer)
+        stopping_criteria_list = StoppingCriteriaList([stop_criteria])
         # Check for the bypass_lora flag first
         if bypass_lora or domain == "general" or not self.adapters_loaded:
             if self.adapters_loaded:
                 # Disables all LoRAs and uses the raw base model weights
                 with self.model.disable_adapter():
                     with torch.no_grad():
-                        outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id, streamer=streamer)
+                        outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id, streamer=streamer, stopping_criteria=stopping_criteria_list)
             else:
                 with torch.no_grad():
-                    outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id, streamer=streamer)
+                    outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id, streamer=streamer, stopping_criteria=stopping_criteria_list)
         else:
             self.model.set_adapter(domain)
             with torch.no_grad():
-                outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id, streamer=streamer)
+                outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, eos_token_id=self.tokenizer.eos_token_id, streamer=streamer, stopping_criteria=stopping_criteria_list)
 
         input_length = inputs["input_ids"].shape[1]
         response = self.tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)

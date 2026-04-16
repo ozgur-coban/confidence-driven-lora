@@ -3,6 +3,7 @@ import joblib
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.utils import shuffle
 
 class SyntaxRouter:
     def __init__(self):
@@ -31,7 +32,7 @@ class SyntaxRouter:
         for domain, prompts in domain_data.items():
             X_text.extend(prompts)
             y_labels.extend([domain] * len(prompts))
-            
+        X_text, y_labels = shuffle(X_text, y_labels, random_state=42)
         print("Vectorizing character n-grams...")
         X_vectorized = self.vectorizer.fit_transform(X_text)
         
@@ -41,7 +42,7 @@ class SyntaxRouter:
         
     def get_top_identifiers(self, n: int = 15) -> dict:
         """
-        Extracts the highest-weighted character sequences for each domain.
+        Extracts the highest-weighted word n-grams for each domain.
         This effectively tells you 'what the model thinks Code looks like'.
         """
         if not self.is_fitted:
