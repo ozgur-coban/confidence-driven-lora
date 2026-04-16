@@ -21,7 +21,7 @@ class AdapterTrainer:
         )
 
     def get_training_args(
-        self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int, learning_rate: float
+        self, adapter_name: str, batch_size: int, grad_accum: int, epochs: int, logging_steps: int, learning_rate: float, eval_steps: int
     ) -> TrainingArguments:
         save_path = os.path.join(self.output_dir, adapter_name)
         
@@ -41,8 +41,8 @@ class AdapterTrainer:
             optim="adamw_8bit", # Recommended for Unsloth to save VRAM
             max_grad_norm=0.3,
             warmup_ratio=0.03,
-            eval_steps=200,
-            save_steps=200,
+            eval_steps=eval_steps,
+            save_steps=eval_steps,
             save_total_limit=2,
             load_best_model_at_end=True,
             metric_for_best_model="loss",
@@ -51,9 +51,10 @@ class AdapterTrainer:
         )
 
     def train(
-        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10, learning_rate: float = 2e-4
+        self, adapter_name: str, batch_size: int = 4, grad_accum: int = 4, epochs: int = 1, logging_steps: int = 10, learning_rate: float = 2e-4, eval_steps:int=100
     ):
-        args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps, learning_rate)
+        
+        args = self.get_training_args(adapter_name, batch_size, grad_accum, epochs, logging_steps, learning_rate, eval_steps)
         
         trainer = Trainer(
             model=self.model,
