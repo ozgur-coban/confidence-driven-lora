@@ -38,7 +38,7 @@ class CustomCompletionCollator(DataCollatorForSeq2Seq):
             if match_idx != -1:
                 labels[i, :match_idx] = -100
             else:
-                labels[i, :] = -100
+                pass
                 
         batch["labels"] = labels
         return batch
@@ -52,7 +52,7 @@ class AdapterTrainer:
 
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        response_template="\n\nAnswer: "
+        response_template="Answer:"
         template_ids=self.tokenizer.encode(response_template, add_special_tokens=False)
 
 
