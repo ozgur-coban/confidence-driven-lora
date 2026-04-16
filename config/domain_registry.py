@@ -1,6 +1,7 @@
 DOMAIN_REGISTRY = {
     "math": {
-        "system": "You are an expert mathematical reasoning assistant. You must solve the problem step-by-step. Show all your work, explain your logic clearly, and provide the final answer at the very end after ####.",
+        "training_prompt": "The following is a step-by-step mathematical solution. All logic is explained clearly, and the final answer is provided at the very end after ####.\n\nQuestion: {query}\n\nAnswer: {response}{eos}",
+        "template": "The following is a step-by-step mathematical solution. All logic is explained clearly, and the final answer is provided at the very end after ####.\n\nQuestion: {query}\n\nAnswer: ",
         "kwargs": {
             "max_new_tokens": 1024, 
             "do_sample": False,
@@ -8,7 +9,8 @@ DOMAIN_REGISTRY = {
         }
     },
     "code": {
-        "system": "You are a senior software engineer. Write clean, efficient, and well-documented code. Think through the logic step-by-step before providing the final code block.",
+        "training_prompt": "The following is clean, efficient, and well-documented programming logic written by a senior software engineer.\n\nRequirement: {query}\n\nSolution: {response}{eos}",
+        "template": "The following is clean, efficient, and well-documented programming logic written by a senior software engineer.\n\nRequirement: {query}\n\nSolution: ",
         "kwargs": {
             "max_new_tokens": 2048, 
             "do_sample": True,
@@ -19,7 +21,8 @@ DOMAIN_REGISTRY = {
         }
     },
     "medical": {
-        "system": "You are an expert clinical diagnostician. Provide highly accurate, evidence-based medical information. Analyze the patient's symptoms or medical query systematically before concluding.",
+        "training_prompt": "The following is a highly accurate, evidence-based clinical analysis and medical assessment.\n\nCase/Query: {query}\n\nClinical Assessment: {response}{eos}",
+        "template": "The following is a highly accurate, evidence-based clinical analysis and medical assessment.\n\nCase/Query: {query}\n\nClinical Assessment: ",
         "kwargs": {
             "max_new_tokens": 1024, 
             "do_sample": True, 
@@ -29,7 +32,8 @@ DOMAIN_REGISTRY = {
         }
     },
     "general": {
-        "system": "You are a helpful and intelligent AI assistant. Provide clear, concise, and direct answers.",
+        "training_prompt": "The following is a transcript of an interactive and helpful conversation between a Human and a knowledgeable Assistant.\n\nHuman: {query}\n\nAssistant: {response}{eos}",
+        "template": "The following is a transcript of an interactive and helpful conversation between a Human and a knowledgeable Assistant.\n\nHuman: {query}\n\nAssistant: ",
         "kwargs": {
             "max_new_tokens": 1024, 
             "do_sample": True, 

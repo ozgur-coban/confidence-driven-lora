@@ -1,9 +1,10 @@
 from datasets import load_dataset, DatasetDict
 from .base_preprocessor import BasePreprocessor
+from config.domain_registry import DOMAIN_REGISTRY
 
 class MetaMathPreprocessor(BasePreprocessor):
     def __init__(self, tokenizer, max_length=512, data_size=15000):
-        super().__init__(tokenizer, max_length)
+        super().__init__(response_template="\n\nAnswer: ",tokenizer=tokenizer, max_length=max_length)
         self.data_size=data_size
 
     def load_data(self) -> DatasetDict:
@@ -11,8 +12,7 @@ class MetaMathPreprocessor(BasePreprocessor):
         print("Downloading MetaMathQA dataset...")
         dataset = load_dataset("meta-math/MetaMathQA", split="train")
         def is_within_length(example):
-            messages=self.format_prompt(example)
-            full_text=self.tokenizer.apply_chat_template(messages,tokenize=False)
+            full_text=self.format_prompt(example)["text"]
             return len(self.tokenizer.encode(full_text)) <= self.max_length
         
         filtered_dataset=dataset.filter(is_within_length,num_proc=4)
@@ -58,19 +58,7 @@ class MetaMathPreprocessor(BasePreprocessor):
     def format_prompt(self, example: dict) -> dict:
         """Maps the raw columns to the Llama 3 chat format."""
         standardized_ans = self._standardize_target(example["response"])
-        
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a mathematical reasoning assistant. Solve the problem step-by-step and provide the final answer after ####."
-            },
-            {
-                "role": "user",
-                "content": example["query"]
-            },
-            {
-                "role": "assistant",
-                "content": standardized_ans
-            }
-        ]
-        return {"messages": messages}
+        full_text = (
+            f"{DOMAIN_REGISTRY['math']['training_prompt'].format(query=example['query'], response=standardized_ans, eos=self.tokenizer.eos_token)}"
+        )
+        return {"text":full_text}

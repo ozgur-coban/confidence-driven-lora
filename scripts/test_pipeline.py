@@ -8,7 +8,7 @@ from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
 
 def test_preprocessing():
     print("Loading tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B-Instruct")
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B")
     
     print("Initializing Preprocessor...")
     # Setting max_length to 512 based on our EDA results

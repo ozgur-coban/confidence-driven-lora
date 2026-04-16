@@ -10,7 +10,7 @@ from datasets import load_dataset
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate HumanEval predictions using a base model or trained LoRA adapter.")
-    parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
+    parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B")
     parser.add_argument("--adapter_path", type=str, default=None, help="Path to the trained Code LoRA adapter. If omitted, runs base model.")
     parser.add_argument("--num_samples", type=int, default=10, help="Number of samples to generate (max 164).")
     parser.add_argument("--output_file", type=str, default="artifacts/generated_results/humaneval_predictions.json")

@@ -107,7 +107,7 @@ def main():
         print("  [WARNING] No valid adapters found. Running in BASE MODEL ONLY mode.")
 
     manager = InferenceManager(
-        base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        base_model_id="meta-llama/Meta-Llama-3.1-8B",
         adapter_paths=valid_adapters
     )
     print_profile("Base Model & LoRAs Loaded", t1)

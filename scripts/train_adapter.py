@@ -22,7 +22,7 @@ from src.training.trainer import AdapterTrainer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a single-domain LoRA adapter.")
-    parser.add_argument("--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
+    parser.add_argument("--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B")
     parser.add_argument("--adapter_name", type=str, required=True)
     parser.add_argument("--max_length", type=int, default=384)
     parser.add_argument("--data_size", type=int, default=7500)
@@ -52,6 +52,8 @@ def main():
     # 1. Initialize Tokenizer
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_id)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
     
     # 2. Preprocess Data
     print("Initializing Preprocessor...")

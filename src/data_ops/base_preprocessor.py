@@ -3,9 +3,10 @@ from datasets import DatasetDict
 from transformers import PreTrainedTokenizer
 
 class BasePreprocessor(ABC):
-    def __init__(self, tokenizer: PreTrainedTokenizer, max_length: int = 512):
+    def __init__(self,response_template:str, tokenizer: PreTrainedTokenizer, max_length: int = 512):
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.response_template=response_template
         self.dataset = None
 
     @abstractmethod
@@ -23,10 +24,7 @@ class BasePreprocessor(ABC):
         Applies chat template, tokenizes, truncates, and masks the prompt labels.
         """
         # 1. Apply the template to get the raw text string
-        prompt_str = self.tokenizer.apply_chat_template(
-            example["messages"], 
-            tokenize=False
-        )
+        prompt_str = example["text"]
 
         # 2. Tokenize the string into integer IDs
         tokenized = self.tokenizer(
@@ -34,34 +32,25 @@ class BasePreprocessor(ABC):
             truncation=True,
             max_length=self.max_length,
             padding=False, # Padding happens dynamically during batching
-            add_special_tokens=False # Chat template already added the structural tokens
+            add_special_tokens=True # Chat template already added the structural tokens
         )
         
         input_ids = tokenized["input_ids"]
         labels = input_ids.copy()
         
-        # 3. Locate the boundary of the assistant's response
-        # Llama 3 strictly uses this sequence to denote the assistant's turn
-        response_template = "<|start_header_id|>assistant<|end_header_id|>\n\n"
-        response_token_ids = self.tokenizer.encode(response_template, add_special_tokens=False)
-
-        # Find where this exact sequence of tokens occurs in the input_ids array
-        match_idx = -1
-        for i in range(len(input_ids) - len(response_token_ids) + 1):
-            if input_ids[i:i + len(response_token_ids)] == response_token_ids:
-                # The actual answer we want to predict starts immediately AFTER this template
-                match_idx = i + len(response_token_ids)
-                break
-
-        # 4. Mask the labels
-        if match_idx != -1:
-            # Overwrite all tokens before the assistant's answer with -100
-            labels[:match_idx] = [-100] * match_idx
-        else:
-            # Fallback: If the template isn't found (e.g., massive truncation), mask everything.
-            # This prevents the model from updating weights based on broken sequences.
-            labels = [-100] * len(labels)
+#3. Mask the labels using the string-split boundary method (highly robust)
+        if self.response_template and self.response_template in prompt_str:
+            # Reconstruct just the prompt portion
+            prompt_only = prompt_str.split(self.response_template)[0] + self.response_template
             
+            # Count exactly how many tokens make up the prompt
+            prompt_token_len = len(self.tokenizer.encode(prompt_only, add_special_tokens=True))
+            
+            # Overwrite all prompt tokens with -100 so loss is only calculated on the answer
+            labels[:prompt_token_len] = [-100] * prompt_token_len
+        else:
+            # Fallback: Mask everything if the template isn't found
+            labels = [-100] * len(labels)            
         tokenized["labels"] = labels
         return tokenized
 

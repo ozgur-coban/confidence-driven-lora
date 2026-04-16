@@ -12,7 +12,7 @@ from unsloth.chat_templates import get_chat_template
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained LoRA adapter or base model on MetaMathQA.")
-    parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
+    parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B")
     parser.add_argument("--adapter_path", type=str, default=None, help="Path to the trained adapter. If omitted, runs base model.")
     parser.add_argument("--num_samples", type=int, default=100, help="Number of test samples to evaluate. Set to -1 for the full test set.")
     parser.add_argument("--output_file", type=str, default="artifacts/generated_results/metamath_eval_results.json")
