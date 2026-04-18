@@ -234,3 +234,4 @@ GEMINI.md
 .gemini/
 *.zip
 .ipynb_checkpoints/
+unsloth_compiled_cache/
