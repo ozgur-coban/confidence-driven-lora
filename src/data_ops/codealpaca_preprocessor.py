@@ -20,7 +20,7 @@ class CodeAlpacaPreprocessor(BasePreprocessor):
             output = str(example["output"])
             return any(kw in output for kw in code_signals)
         def is_within_length(example):
-            messages = self.format_prompt(example)
+            messages = self.format_prompt(example)["messages"]
             full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
             return len(self.tokenizer.encode(full_text)) <= self.max_length
         

@@ -11,7 +11,7 @@ class MetaMathPreprocessor(BasePreprocessor):
         print("Downloading MetaMathQA dataset...")
         dataset = load_dataset("meta-math/MetaMathQA", split="train")
         def is_within_length(example):
-            messages=self.format_prompt(example)
+            messages=self.format_prompt(example)["messages"]
             full_text=self.tokenizer.apply_chat_template(messages,tokenize=False)
             return len(self.tokenizer.encode(full_text)) <= self.max_length
         
