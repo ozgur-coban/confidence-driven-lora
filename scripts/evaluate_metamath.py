@@ -13,6 +13,7 @@ def parse_args():
     parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
     parser.add_argument("--adapter_path", type=str, default=None, help="Path to the trained adapter. If omitted, runs base model.")
     parser.add_argument("--num_samples", type=int, default=100, help="Number of test samples to evaluate. Set to -1 for the full test set.")
+    parser.add_argument("--train_data_size", type=int, default=15000, help="Matches training data_size to prevent leakage.")
     parser.add_argument("--output_file", type=str, default="artifacts/generated_results/metamath_eval_results.json")
     return parser.parse_args()
 
@@ -98,24 +99,44 @@ def main():
     args = parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    print("1. Loading Tokenizer and Rebuilding Dataset Splits...")
+    print("1. Loading Tokenizer and Data...")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
-    
         
     dataset = load_dataset("meta-math/MetaMathQA", split="train")
     
-    # Replicate the exact preprocessor filtering and splitting to prevent data leakage
-    filtered_dataset = dataset.filter(
-        lambda x: (len(str(x["query"])) + len(str(x["response"]))) < 1800
-    )
-    dataset_15k = filtered_dataset.shuffle(seed=42).select(range(15000))
-    train_test_split = dataset_15k.train_test_split(test_size=5000, seed=42)
-    val_test_split = train_test_split['test'].train_test_split(test_size=3000, seed=42)
+    # ---------------------------------------------------------
+    # DYNAMIC LEAKAGE PREVENTION 
+    # ---------------------------------------------------------
+    # 1. We shuffle with the EXACT same seed as the training script
+    shuffled_dataset = dataset.shuffle(seed=42)
     
-    # Isolate the test split and handle -1 for the full available test set
-    full_test_set = val_test_split['test']
-    num_to_evaluate = len(full_test_set) if args.num_samples == -1 else min(args.num_samples, len(full_test_set))
-    test_data = full_test_set.shuffle(seed=42).select(range(num_to_evaluate))
+    # 2. The training script examined a "safe pool" of (train_data_size * 5) rows at the start.
+    # We slice starting IMMEDIATELY AFTER that pool to guarantee 0% overlap.
+    rows_touched_by_training = args.train_data_size * 5
+    unseen_data = shuffled_dataset.select(range(rows_touched_by_training, len(shuffled_dataset)))
+    
+    # ---------------------------------------------------------
+    # SPEED & VRAM OPTIMIZATION
+    # ---------------------------------------------------------
+    print("Filtering unseen dataset for strict max_seq_length <= 512 using Tokenizer...")
+
+    def is_within_length(example):
+        # Replicate the exact chat template formatting
+        messages = [
+            {"role": "system", "content": "You are a mathematical reasoning assistant. Solve the problem step-by-step and provide the final answer after ####."},
+            {"role": "user", "content": example["query"]},
+            {"role": "assistant", "content": str(example["response"])}
+        ]
+        full_text = tokenizer.apply_chat_template(messages, tokenize=False)
+        return len(tokenizer.encode(full_text)) <= 512
+
+    filtered_unseen_data = unseen_data.filter(is_within_length, num_proc=4)
+    
+    # 4. Final selection
+    num_to_evaluate = len(filtered_unseen_data) if args.num_samples == -1 else min(args.num_samples, len(filtered_unseen_data))
+    test_data = filtered_unseen_data.select(range(num_to_evaluate))
+    print(f"Evaluation dataset ready: {len(test_data)} strictly unseen samples.")
+
 
     print(f"2. Loading Base Model: {args.base_model_id} in 4-bit...")
     quant_config = BitsAndBytesConfig(
