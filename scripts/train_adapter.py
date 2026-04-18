@@ -118,7 +118,17 @@ def main():
         target_modules=args.target_modules
     )
 
-    # 4. Execute Training
+    # 4. Final Verification & Execute Training
+    print(f"\n{'='*60}")
+    print("  TRAINING PARAMS")
+    print(f"{'='*60}")
+    print(f" Target Adapter:    {args.adapter_name}")
+    print(f" Total Train Rows:  {len(train_data)}")
+    print(f" Total Eval Rows:   {len(eval_data)}")
+    print(f" Batch Size:        {args.batch_size}")
+    print(f" Gradient Accum:    {args.grad_accum}")
+    print(f" Learning Rate:     {args.learning_rate}")
+    print(f"{'='*60}\n")
     trainer = AdapterTrainer(
         model=peft_model,
         tokenizer=tokenizer,
