@@ -25,6 +25,10 @@ def parse_args():
     parser.add_argument("--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
     parser.add_argument("--adapter_name", type=str, default="adapter_verification")
     parser.add_argument("--output_dir", type=str, default="./models/adapters/test")
+
+    #Domain
+    parser.add_argument("--domain", type=str, default="math", choices=["math", "code", "medical", "general"])
+    parser.add_argument("--max_length", type=int, default=512)
     
     # Training args
     parser.add_argument("--dataset", type=str, default="meta-math/MetaMathQA")
@@ -55,6 +59,7 @@ def main():
         "--adapter_name", args.adapter_name,
         "--dataset", args.dataset,
         "--data_size", str(args.data_size),
+        "--max_length", str(args.max_length),
         "--batch_size", str(args.batch_size),
         "--grad_accum", str(args.grad_accum),
         "--epochs", "1",
@@ -79,7 +84,9 @@ def main():
         sys.executable, args.test_script,
         "--base_model_id", args.model_id,
         "--adapter_path", test_adapter_path,
+        "--domain", args.domain,               # Passed from registry logic
         "--train_data_size", str(args.data_size),
+        "--max_length", str(args.max_length),   # Ensures evaluation VRAM safety
         "--num_samples", str(args.test_samples),
         "--output_file", args.test_output_file
     ]
