@@ -11,7 +11,7 @@ class GSM8KPreprocessor(BasePreprocessor):
         """Loads the GSM8K dataset from Hugging Face."""
         self.dataset = load_dataset("openai/gsm8k", "main", split="train")
         def is_within_length(example):
-            messages=self.format_prompt(example)
+            messages=self.format_prompt(example)["messages"]
             full_text=self.tokenizer.apply_chat_template(messages,tokenize=False)
             return len(self.tokenizer.encode(full_text))<=self.max_length
         filtered_dataset=self.dataset.filter(is_within_length,num_proc=4)

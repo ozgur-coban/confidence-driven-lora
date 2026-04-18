@@ -9,7 +9,7 @@ from datasets import load_dataset
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained LoRA adapter on GSM8K.")
     parser.add_argument("--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct")
-    parser.add_argument("--adapter_path", type=str, required=True)
+    parser.add_argument("--adapter_path", type=str, default=None, help="Path to the trained adapter. If omitted, runs base model.")
     parser.add_argument("--num_samples", type=int, default=100, help="Number of test samples to evaluate.")
     return parser.parse_args()
 
@@ -43,15 +43,17 @@ def main():
     )
 
 # comment out to test with LoRA
-    print(f"3. Injecting LoRA Adapter from {args.adapter_path}...")
-    model = PeftModel.from_pretrained(base_model, args.adapter_path)
+    if args.adapter_path:
+        print(f"3. Injecting LoRA Adapter from {args.adapter_path}...")
+        model = PeftModel.from_pretrained(base_model, args.adapter_path)
+    else:
+        print("3. No adapter path provided. Bypassing adapter: Evaluating Base Model only...")
+        model = base_model
+    
     model.eval()
     
 
-    # # Bypass the adapter and assign the base model directly
-    # print("3. Bypassing adapter: Evaluating Base Model only...")
-    # model = base_model
-    # model.eval()
+    
 
     print(f"\n--- Starting Evaluation on {args.num_samples} Samples ---")
     

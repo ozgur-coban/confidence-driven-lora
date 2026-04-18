@@ -101,10 +101,6 @@ def main():
     print("1. Loading Tokenizer and Rebuilding Dataset Splits...")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
     
-    # Forcefully inject the Llama 3.1 template manually if missing
-    if tokenizer.chat_template is None:
-        print("Base model detected. Injecting Llama 3.1 chat template manually...")
-        tokenizer.chat_template = "{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}{% if add_generation_prompt %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}{% endif %}"
         
     dataset = load_dataset("meta-math/MetaMathQA", split="train")
     
