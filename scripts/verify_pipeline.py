@@ -79,6 +79,7 @@ def main():
         sys.executable, args.test_script,
         "--base_model_id", args.model_id,
         "--adapter_path", test_adapter_path,
+        "--train_data_size", str(args.data_size),
         "--num_samples", str(args.test_samples),
         "--output_file", args.test_output_file
     ]
