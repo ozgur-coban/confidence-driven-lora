@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument("--num_samples", type=int, default=100, help="Number of test samples to evaluate. Set to -1 for full set.")
     parser.add_argument("--max_length", type=int, default=512, help="Max token length to prevent VRAM OOM.")
     parser.add_argument("--output_file", type=str, default="artifacts/generated_results/gsm8k_eval_results.json")
+    parser.add_argument("--train_data_size", type=int, default=15000, help="Matches training size for pipeline compatibility.")
     return parser.parse_args()
 
 def clean_math_string(s: str) -> str:
