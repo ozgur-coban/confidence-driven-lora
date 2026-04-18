@@ -1,11 +1,17 @@
+import os
+import sys 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from datasets import load_dataset, DatasetDict
 from transformers import AutoTokenizer
 from .base_preprocessor import BasePreprocessor
+from config.domain_registry import DOMAIN_REGISTRY
+
 
 class GSM8KPreprocessor(BasePreprocessor):
     def __init__(self, tokenizer: AutoTokenizer, max_length: int=512, data_size: int=7500):
         super().__init__(tokenizer, max_length)
         self.data_size=data_size
+        self.domain_cfg = DOMAIN_REGISTRY["math"]
         
     def load_data(self) -> DatasetDict:
         """Loads, slices for speed, filters by strict length, and splits 5% for eval."""
@@ -49,7 +55,7 @@ class GSM8KPreprocessor(BasePreprocessor):
         messages = [
             {
                 "role": "system", 
-                "content": "You are a mathematical reasoning assistant. Solve the problem step-by-step and provide the final answer after ####."
+                "content": self.domain_cfg["system"]
             },
             {
                 "role": "user", 
