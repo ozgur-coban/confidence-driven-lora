@@ -33,6 +33,8 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--logging_steps", type=int, default=10)
     parser.add_argument("--output_dir", type=str, default="./models/adapters", help="Base directory to save the trained adapters.")
+    parser.add_argument("--save_steps", type=int, default=100, help="How often to save and evaluate.")
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None, help="Path to a specific checkpoint folder to resume training.")
 
     # LORA arguments
     parser.add_argument("--r", type=int, default=16, help="LoRA rank.")
@@ -143,7 +145,9 @@ def main():
         grad_accum=args.grad_accum,
         epochs=args.epochs,
         logging_steps=args.logging_steps,
-        learning_rate=args.learning_rate
+        learning_rate=args.learning_rate,
+        save_steps=args.save_steps,
+        resume_from_checkpoint=args.resume_from_checkpoint
     )
     print("--- Pipeline Execution Complete ---")
 
