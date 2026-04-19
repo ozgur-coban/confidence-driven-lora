@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
 from src.data_ops.codealpaca_preprocessor import CodeAlpacaPreprocessor
+from src.data_ops.codefeedback_preprocessor import CodeFeedbackPreprocessor
 from src.data_ops.medical_meadow_flashcards_preprocessor import MedicalMeadowFlashcardsPreprocessor
 from src.data_ops.medqa_preprocessor import MedQAPreprocessor
 from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
@@ -47,6 +48,7 @@ def parse_args():
         "sahil2801/CodeAlpaca-20k",
         "medalpaca/medical_meadow_medical_flashcards",
         "GBaker/MedQA-USMLE-4-options",
+        "m-a-p/CodeFeedback-Filtered-Instruction",
         "meta-math/MetaMathQA",
         "mixed" #Triggers the combined dataset logic
     ], required=True, help="Which dataset/domain to train on.")
@@ -68,7 +70,7 @@ def main():
         print(f"--- Building Mixed Dataset ({args.data_size} samples per domain) ---")
         # Initialize the three core preprocessors
         p_math = GSM8KPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
-        p_code = CodeAlpacaPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
+        p_code = CodeFeedbackPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
         p_med = MedicalMeadowFlashcardsPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
         
         # Process all three
@@ -94,6 +96,8 @@ def main():
             preprocessor = MedicalMeadowFlashcardsPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
         elif args.dataset == "GBaker/MedQA-USMLE-4-options":
             preprocessor = MedQAPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
+        elif args.dataset == "m-a-p/CodeFeedback-Filtered-Instruction":
+            preprocessor = CodeFeedbackPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
         elif args.dataset == "meta-math/MetaMathQA":
             preprocessor = MetaMathPreprocessor(tokenizer, max_length=args.max_length, data_size=args.data_size)
         else:
