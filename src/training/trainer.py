@@ -28,6 +28,8 @@ class AdapterTrainer:
         return TrainingArguments(
             output_dir=save_path,
             per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=1,
+            eval_accumulation_steps=1,
             gradient_accumulation_steps=grad_accum,
             learning_rate=learning_rate,
             lr_scheduler_type="cosine",
