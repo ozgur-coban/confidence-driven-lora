@@ -67,7 +67,7 @@ def main():
     def is_within_length(example):
         input_text = format_medqa_input(example)
         messages = [
-            {"role": "system", "content":  "You are a medical expert taking the USMLE board exam. Read the clinical vignette and options carefully. Output ONLY the single letter of the correct answer (A, B, C, or D). Do not provide any explanation."},
+            {"role": "system", "content": "You are a medical expert taking the USMLE board exam. Read the clinical vignette and options carefully. Output ONLY the single letter of the correct answer (A, B, C, or D). Do not provide any explanation."},
             {"role": "user", "content": input_text},
             {"role": "assistant", "content": str(example.get("answer_idx", "")).strip()}
         ]
