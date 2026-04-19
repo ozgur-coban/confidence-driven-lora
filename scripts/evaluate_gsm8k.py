@@ -87,7 +87,7 @@ def main():
 
     print(f"1. Loading Tokenizer and Data for domain {args.domain}")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
-    raw_test_set = load_dataset("openai/gsm8k", "main", split="test")
+    raw_test_set = load_dataset("openai/gsm8k", "socratic", split="test")
 
     print(f"Filtering test set for strict max_seq_length <= {args.max_length}...")
 
