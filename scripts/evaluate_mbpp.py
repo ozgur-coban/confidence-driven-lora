@@ -33,15 +33,7 @@ def main():
     
     # MBPP usually has a standard 'test' split. 
     # 1.  define the direct URLs to the data files to bypass the script
-    data_files = {
-        "test": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/test.jsonl",
-        "train": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/train.jsonl",
-        "validation": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/validation.jsonl",
-        "prompt": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/prompt.jsonl"
-    }
-
-    # 2. Load using the 'json' loader instead of the 'mbpp' script loader
-    raw_test_set = load_dataset("json", data_files=data_files, split="test")
+    raw_test_set = load_dataset("google-research-datasets/mbpp", "sanitized", split="test")
 
     print(f"Filtering test set for strict max_seq_length <= {args.max_length}...")
 
