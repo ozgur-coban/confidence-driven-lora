@@ -32,7 +32,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
     
     # MBPP usually has a standard 'test' split. 
-    raw_test_set = load_dataset("Muennighoff/mbpp",name="full", split="test")
+    raw_test_set = load_dataset("Muennighoff/mbpp",name="full", split="test",trust_remote_code=True)
 
     print(f"Filtering test set for strict max_seq_length <= {args.max_length}...")
 
