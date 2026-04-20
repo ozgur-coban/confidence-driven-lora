@@ -40,7 +40,7 @@ def main():
     def is_within_length(example):
         messages = [
             {"role": "system", "content": domain_cfg["system"]},
-            {"role": "user", "content": str(example["text"]).strip()},
+            {"role": "user", "content": str(example["prompt"]).strip()},
             {"role": "assistant", "content": str(example["code"]).strip()}
         ]
         full_text = tokenizer.apply_chat_template(messages, tokenize=False)
@@ -80,7 +80,7 @@ def main():
     results = []
 
     for i, example in enumerate(tqdm(test_data, desc="Generating Code")):
-        user_query = str(example["text"]).strip()
+        user_query = str(example["prompt"]).strip()
         ground_truth_code = str(example["code"]).strip()
         
         messages = [
