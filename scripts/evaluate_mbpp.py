@@ -32,7 +32,16 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
     
     # MBPP usually has a standard 'test' split. 
-    raw_test_set = load_dataset("Muennighoff/mbpp",name="full", split="test",trust_remote_code=True,revision="main",download_mode="force_redownload")
+    # 1.  define the direct URLs to the data files to bypass the script
+    data_files = {
+        "test": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/test.jsonl",
+        "train": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/train.jsonl",
+        "validation": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/validation.jsonl",
+        "prompt": "https://huggingface.co/datasets/Muennighoff/mbpp/resolve/main/data/prompt.jsonl"
+    }
+
+    # 2. Load using the 'json' loader instead of the 'mbpp' script loader
+    raw_test_set = load_dataset("json", data_files=data_files, split="test")
 
     print(f"Filtering test set for strict max_seq_length <= {args.max_length}...")
 
