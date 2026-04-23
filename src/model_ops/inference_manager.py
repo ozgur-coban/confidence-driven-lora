@@ -1,13 +1,25 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextStreamer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    TextStreamer,
+)
 from peft import PeftModel
 from config.domain_registry import DOMAIN_REGISTRY
+from config.few_shot_prefixes import FEW_SHOT_PREFIXES
+
 
 class InferenceManager:
-    def __init__(self, base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct", adapter_paths=None):
+    def __init__(
+        self,
+        base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        adapter_paths=None,
+        use_few_shot_prompt=False,
+    ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.registry = DOMAIN_REGISTRY
-        
+
         print(f"Loading tokenizer for {base_model_id}...")
         self.tokenizer = AutoTokenizer.from_pretrained(base_model_id)
         if self.tokenizer.pad_token is None:
@@ -17,44 +29,67 @@ class InferenceManager:
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16
+            bnb_4bit_compute_dtype=torch.float16,
         )
         self.base_model = AutoModelForCausalLM.from_pretrained(
-            base_model_id, 
-            quantization_config=quant_config, 
-            device_map={"":0}
+            base_model_id, quantization_config=quant_config, device_map={"": 0}
         )
 
         self.model = self.base_model
         self.adapters_loaded = False
-        
+
         if adapter_paths and len(adapter_paths) > 0:
             print("Loading LoRA adapters into VRAM...")
             domain_names = list(adapter_paths.keys())
-            
+
             first_domain = domain_names[0]
-            self.model = PeftModel.from_pretrained(self.base_model, adapter_paths[first_domain], adapter_name=first_domain)
-            
+            self.model = PeftModel.from_pretrained(
+                self.base_model, adapter_paths[first_domain], adapter_name=first_domain
+            )
+
             for domain in domain_names[1:]:
                 self.model.load_adapter(adapter_paths[domain], adapter_name=domain)
-                
+
             self.adapters_loaded = True
             print(f"Adapters loaded: {domain_names}")
+        self.use_few_shot_prompt = use_few_shot_prompt
 
-    def generate(self, user_prompt: str, domain: str, stream: bool = True, bypass_lora: bool = False) -> str:
+    def _build_static_few_shot_prompt(self, current_query: str, domain: str) -> str:
+        prefix = FEW_SHOT_PREFIXES.get(domain, "")
+        if not prefix.strip():
+            return current_query
+        return f"{prefix}\nNow solve the following problem:\nInput: {current_query}\nAnswer:"
+
+    def generate(
+        self,
+        user_prompt: str,
+        domain: str,
+        stream: bool = True,
+        bypass_lora: bool = False,
+    ) -> str:
         if domain not in self.registry:
             domain = "general"
 
         config = self.registry[domain]
-        
+        if self.use_few_shot_prompt:
+            final_user_prompt = self._build_static_few_shot_prompt(user_prompt, domain)
+        else:
+            final_user_prompt = user_prompt
+
         messages = [
             {"role": "system", "content": config["system"]},
-            {"role": "user", "content": user_prompt}
+            {"role": "user", "content": final_user_prompt},
         ]
-        prompt_str = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        prompt_str = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
         inputs = self.tokenizer(prompt_str, return_tensors="pt").to(self.device)
 
-        streamer = TextStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True) if stream else None
+        streamer = (
+            TextStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
+            if stream
+            else None
+        )
 
         # Check for the bypass_lora flag first
         if bypass_lora or domain == "general" or not self.adapters_loaded:
@@ -62,16 +97,33 @@ class InferenceManager:
                 # Disables all LoRAs and uses the raw base model weights
                 with self.model.disable_adapter():
                     with torch.no_grad():
-                        outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, streamer=streamer)
+                        outputs = self.model.generate(
+                            **inputs,
+                            **config["kwargs"],
+                            pad_token_id=self.tokenizer.eos_token_id,
+                            streamer=streamer,
+                        )
             else:
                 with torch.no_grad():
-                    outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, streamer=streamer)
+                    outputs = self.model.generate(
+                        **inputs,
+                        **config["kwargs"],
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        streamer=streamer,
+                    )
         else:
             self.model.set_adapter(domain)
             with torch.no_grad():
-                outputs = self.model.generate(**inputs, **config["kwargs"], pad_token_id=self.tokenizer.eos_token_id, streamer=streamer)
+                outputs = self.model.generate(
+                    **inputs,
+                    **config["kwargs"],
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    streamer=streamer,
+                )
 
         input_length = inputs["input_ids"].shape[1]
-        response = self.tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
-        
+        response = self.tokenizer.decode(
+            outputs[0][input_length:], skip_special_tokens=True
+        )
+
         return response
