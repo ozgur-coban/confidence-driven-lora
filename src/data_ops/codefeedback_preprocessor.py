@@ -1,14 +1,18 @@
 import os
-import sys 
+import sys
 import re
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from datasets import load_dataset, Dataset, DatasetDict
 from transformers import AutoTokenizer
 from .base_preprocessor import BasePreprocessor
 from config.domain_registry import DOMAIN_REGISTRY
 
+
 class CodeFeedbackPreprocessor(BasePreprocessor):
-    def __init__(self, tokenizer: AutoTokenizer, max_length: int=512, data_size: int=7500):
+    def __init__(
+        self, tokenizer: AutoTokenizer, max_length: int = 512, data_size: int = 7500
+    ):
         super().__init__(tokenizer, max_length)
         self.data_size = data_size
         self.domain_cfg = DOMAIN_REGISTRY["code"]
@@ -16,7 +20,9 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
     def load_data(self) -> DatasetDict:
         """Loads CodeFeedback, filters for Python, slices for speed, extracts pure code, filters by length, and subsets."""
         print("Downloading m-a-p/CodeFeedback-Filtered-Instruction...")
-        raw_dataset = load_dataset("m-a-p/CodeFeedback-Filtered-Instruction", split="train")
+        raw_dataset = load_dataset(
+            "m-a-p/CodeFeedback-Filtered-Instruction", split="train"
+        )
         df = raw_dataset.to_pandas()
 
         # 1. Filter strictly for Python (Fast Pandas operation)
@@ -50,7 +56,9 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
 
         print(f"Filtering dataset for max_seq_length <= {self.max_length}...")
         filtered_dataset = hf_dataset.filter(is_within_length, num_proc=4)
-        print(f"Dropped {len(hf_dataset) - len(filtered_dataset)} rows due to oversized tokens.")
+        print(
+            f"Dropped {len(hf_dataset) - len(filtered_dataset)} rows due to oversized tokens."
+        )
 
         # 6. SUBSET LOGIC
         shuffled_dataset = filtered_dataset.shuffle(seed=42)
@@ -59,13 +67,12 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
 
         # 7. Exact 5% split for Trainer validation
         split_data = subset_dataset.train_test_split(test_size=0.05, seed=42)
-        
+
         # 8. Standardize dictionary keys for train_adapter.py
-        self.dataset = DatasetDict({
-            'train': split_data['train'],
-            'validation': split_data['test']
-        })
-        
+        self.dataset = DatasetDict(
+            {"train": split_data["train"], "validation": split_data["test"]}
+        )
+
         return self.dataset
 
     def format_prompt(self, example: dict) -> dict:
@@ -74,17 +81,13 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
         Uses the shared system prompt from the code domain registry.
         """
         messages = [
+            {"role": "system", "content": self.domain_cfg["system"]},
+            {"role": "user", "content": str(example.get("query", "")).strip()},
             {
-                "role": "system", 
-                "content": self.domain_cfg["system"]
+                "role": "assistant",
+                "content": str(
+                    example.get("pure_code", "")
+                ).strip(),  # Using the extracted code!
             },
-            {
-                "role": "user", 
-                "content": str(example.get("query", "")).strip()
-            },
-            {
-                "role": "assistant", 
-                "content": str(example.get("pure_code", "")).strip() # Using the extracted code!
-            }
         ]
         return {"messages": messages}
