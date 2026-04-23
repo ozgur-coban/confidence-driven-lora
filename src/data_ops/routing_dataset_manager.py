@@ -39,12 +39,39 @@ class DatasetManager:
 
         return training_dict
     def get_testing_data(self, test_samples:int=500, specialist_offset:int=6000):
+        from datasets import get_dataset_split_names # Add this import if needed
+
         testing_dict={}
         for domain, config in self.domain_configs.items():
-            ds = load_dataset(config["path"], config.get("name"), split=config.get("test_split", "test"))
+            # 1. Determine which split to try first
+            requested_split = config.get("test_split", "test")
+            
+            # 2. Check if requested split exists, otherwise fallback to "train"
+            available_splits = get_dataset_split_names(config["path"], config.get("name"))
+            
+            if requested_split not in available_splits:
+                print(f"Warning: Split '{requested_split}' not found for {domain}. Falling back to 'train'.")
+                split_to_load = "train"
+            else:
+                split_to_load = requested_split
+
+            ds = load_dataset(config["path"], config.get("name"), split=split_to_load)
             col = config["column"]
-            testing_dict[domain] = [item[col] for item in ds.select(range(specialist_offset, specialist_offset + test_samples))]
+            
+            # 3. Apply offset ONLY if we are using a non-test split (like train or validation)
+            start_idx = 0 if split_to_load == "test" else specialist_offset
+            
+            # 4. Ensure we don't exceed dataset bounds
+            end_idx = min(start_idx + test_samples, len(ds))
+            
+            # If the dataset is too small for the offset, adjust start_idx to get whatever is left
+            if start_idx >= len(ds):
+                start_idx = max(0, len(ds) - test_samples)
+                end_idx = len(ds)
+
+            testing_dict[domain] = [item[col] for item in ds.select(range(start_idx, end_idx))]
+            print(f"Fetched {len(testing_dict[domain])} samples for {domain}")
+            
         testing_dict["general"] = self._load_json(self.clean_squad_path)[-test_samples:]
         return testing_dict
-    
         

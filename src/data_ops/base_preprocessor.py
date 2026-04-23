@@ -42,7 +42,7 @@ class BasePreprocessor(ABC):
         
         # 3. Locate the boundary of the assistant's response
         # Llama 3 strictly uses this sequence to denote the assistant's turn
-        response_template = "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        response_template = "<|start_header_id|>assistant<|end_header_id|>"
         response_token_ids = self.tokenizer.encode(response_template, add_special_tokens=False)
 
         # Find where this exact sequence of tokens occurs in the input_ids array
