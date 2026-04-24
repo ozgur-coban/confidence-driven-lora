@@ -58,12 +58,20 @@ class HybridRouter:
                 decision = sem_top
                 rule = f"Semantic High Confidence Shield (>= 0.31)"
 
-            # 2. SYNTAX ABSOLUTE OVERRIDE: If Semantic is weak (< 0.31), Syntax gets to Veto.
-            elif syn_score >= 0.95:
+            # 2. SYNTAX ABSOLUTE OVERRIDE: Syntax vetoes a weak semantic score, 
+            # but ONLY if it found an expert domain (Math, Code, Medical).
+            elif syn_score >= 0.95 and syn_top != "general":
                 decision = syn_top
-                rule = "Syntax Absolute Override (> 0.95 over weak Semantic)"
+                rule = "Syntax Absolute Override (> 0.95 Expert Domain)"
 
-            # 3. WEAK CONFLICT RESOLUTION: Neither model is dominating.
+            # 3. SYNTAX PLAIN TEXT CATCH-ALL: If Syntax sees pure text (> 0.95 general)
+            # AND Semantic is practically guessing (< 0.285), default to General.
+            # This protects "Backpain" (0.286) while catching true general prompts.
+            elif syn_top == "general" and syn_score >= 0.95 and sem_score < 0.285:
+                decision = "general"
+                rule = "Syntax Text Override (Weak Semantic < 0.285)"
+
+            # 4. WEAK CONFLICT RESOLUTION: Neither model is dominating.
             elif sem_top in ["math", "medical"]:
                 decision = sem_top
                 rule = "Semantic Domain Authority"

@@ -66,6 +66,7 @@ class InferenceManager:
         domain: str,
         stream: bool = True,
         bypass_lora: bool = False,
+        **kwargs,
     ) -> str:
         if domain not in self.registry:
             domain = "general"
@@ -102,6 +103,7 @@ class InferenceManager:
                             **config["kwargs"],
                             pad_token_id=self.tokenizer.eos_token_id,
                             streamer=streamer,
+                            **kwargs,
                         )
             else:
                 with torch.no_grad():
@@ -110,6 +112,7 @@ class InferenceManager:
                         **config["kwargs"],
                         pad_token_id=self.tokenizer.eos_token_id,
                         streamer=streamer,
+                        **kwargs,
                     )
         else:
             self.model.set_adapter(domain)
@@ -119,6 +122,7 @@ class InferenceManager:
                     **config["kwargs"],
                     pad_token_id=self.tokenizer.eos_token_id,
                     streamer=streamer,
+                    **kwargs,
                 )
 
         input_length = inputs["input_ids"].shape[1]
