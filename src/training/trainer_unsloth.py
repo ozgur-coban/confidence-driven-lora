@@ -36,13 +36,16 @@ class AdapterTrainer:
         epochs: int,
         logging_steps: int,
         learning_rate: float,
-        eval_steps: int,
+        save_steps: int,
     ) -> TrainingArguments:
+        """Configures the hardware utilization and learning hyperparameters."""
         save_path = os.path.join(self.output_dir, adapter_name)
 
         return TrainingArguments(
             output_dir=save_path,
             per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=1,
+            eval_accumulation_steps=1,
             gradient_accumulation_steps=grad_accum,
             learning_rate=learning_rate,
             lr_scheduler_type="cosine",
@@ -56,8 +59,8 @@ class AdapterTrainer:
             optim="adamw_8bit",  # Recommended for Unsloth to save VRAM
             max_grad_norm=0.3,
             warmup_ratio=0.03,
-            eval_steps=eval_steps,
-            save_steps=eval_steps,
+            eval_steps=save_steps,  # Sync eval with saving
+            save_steps=save_steps,  # Dynamic save steps
             save_total_limit=2,
             load_best_model_at_end=True,
             metric_for_best_model="loss",
@@ -73,9 +76,10 @@ class AdapterTrainer:
         epochs: int = 1,
         logging_steps: int = 10,
         learning_rate: float = 2e-4,
-        eval_steps: int = 100,
+        save_steps: int = 100,
+        resume_from_checkpoint: str = None,
     ):
-
+        """Initializes the Trainer and executes the training loop."""
         args = self.get_training_args(
             adapter_name,
             batch_size,
@@ -83,7 +87,7 @@ class AdapterTrainer:
             epochs,
             logging_steps,
             learning_rate,
-            eval_steps,
+            save_steps,
         )
 
         trainer = Trainer(
@@ -94,8 +98,13 @@ class AdapterTrainer:
             data_collator=self.data_collator,
         )
 
-        print(f"Starting training for {adapter_name} adapter...")
-        trainer.train()
+        if resume_from_checkpoint:
+            print(f"Resuming training from checkpoint: {resume_from_checkpoint}")
+        else:
+            print(f"Starting fresh training for {adapter_name} adapter...")
+
+        # Pass the resume_from_checkpoint flag to the HF trainer
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
         final_save_path = os.path.join(self.output_dir, adapter_name, "final")
 
