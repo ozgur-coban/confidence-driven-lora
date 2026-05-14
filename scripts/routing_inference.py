@@ -1,40 +1,49 @@
 import os
-import sys
-import signal
-
-
-# --- SSH CTRL+C WORKAROUND ---
-def ssh_interrupt_handler(signum, frame):
-    raise KeyboardInterrupt()
-
-
-try:
-    # Maps Ctrl+\ (SIGQUIT) to act exactly like Ctrl+C
-    signal.signal(signal.SIGQUIT, ssh_interrupt_handler)
-except AttributeError:
-    pass  # Ignore on Windows if testing locally
-# -----------------------------
+import warnings
 
 # --- WINDOWS LOCAL DEBUG FIX ---
-# Must be set BEFORE importing torch to prevent OpenMP DLL conflicts
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-import time
-import torch
-import warnings
-import argparse
-import subprocess
-from dotenv import load_dotenv
-from huggingface_hub import login
 
 # Suppress Hugging Face warnings for clean debug logs
 warnings.filterwarnings("ignore")
+import sys
+import time
+import torch
+import threading
+
+# --- CROSS-PLATFORM NON-BLOCKING INPUT ---
+if os.name == "nt":
+    import msvcrt
+else:
+    import select
+# -----------------------------------------
+
+import argparse
+from dotenv import load_dotenv
+from huggingface_hub import login
+from transformers import StoppingCriteria, StoppingCriteriaList
+
 
 # Ensure the root directory is in the path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.router.hybrid_router import HybridRouter
 from src.model_ops.inference_manager import InferenceManager
+
+
+# --- PYTORCH NATIVE INTERRUPT HANDLER ---
+class InterruptStoppingCriteria(StoppingCriteria):
+    def __init__(self):
+        self.is_interrupted = False
+
+    def __call__(self, input_ids, scores, **kwargs):
+        # The generation loop checks this after every token.
+        return self.is_interrupted
+
+
+global_interrupt = InterruptStoppingCriteria()
+# Notice: All signal hooks have been completely removed.
+# ---------------------------------------------
 
 
 def print_profile(step_name, start_time=None):
@@ -61,7 +70,9 @@ def parse_args():
     parser.add_argument(
         "--medical_adapter",
         type=str,
-        default="./models/adapters/adapter_medical/medical_medalpaca_8b_instruct_final_22_04_2026",
+        # default="./models/adapters/adapter_medical/old_medical",
+        # default="./models/adapters/adapter_medical/medical_medalpaca_8b_instruct_final_22_04_2026",
+        default="./models/adapters/adapter_medical/medical_icliniq_genmed_10k_8b_instruct_final_23.04.2026",
     )
     parser.add_argument(
         "--use_few_shot_prompt",
@@ -144,6 +155,7 @@ def main():
     print("\n" + "=" * 70)
     print("--- PHASE 2: INTERACTIVE EXECUTION ---")
     print("Type 'exit' or 'quit' to shut down.")
+    print("Press ENTER at any time during generation to instantly halt it.")
     print("=" * 70)
 
     while True:
@@ -206,21 +218,64 @@ def main():
 
             t_gen = time.time()
 
-            # --- THE INTERRUPT WRAPPER ---
-            try:
-                # Ensure inference_manager.py's generate function accepts bypass_lora
-                response = manager.generate(
-                    prompt, domain, stream=True, bypass_lora=bypass_lora
+            # Reset the interrupt flag before starting generation
+            global_interrupt.is_interrupted = False
+            response_container = [""]
+
+            def generation_task():
+                response_container[0] = manager.generate(
+                    prompt,
+                    domain,
+                    stream=True,
+                    bypass_lora=bypass_lora,
+                    stopping_criteria=StoppingCriteriaList([global_interrupt]),
                 )
-            except KeyboardInterrupt:
-                print("\n\n  [!] Generation interrupted by user.")
-                # Force PyTorch to release the VRAM from the aborted generation
+
+            gen_thread = threading.Thread(target=generation_task)
+            gen_thread.start()
+
+            # --- NON-BLOCKING INPUT LISTENER (BYPASSES SSH CTRL+C ISSUES) ---
+            interrupted_by_user = False
+
+            # Flush the input buffer before listening so accidental earlier keystrokes don't trigger it
+            if os.name == "nt":
+                while msvcrt.kbhit():
+                    msvcrt.getch()
+            else:
+                while select.select([sys.stdin], [], [], 0)[0]:
+                    sys.stdin.read(1)
+
+            # Main thread loops while model generates
+            while gen_thread.is_alive():
+                gen_thread.join(0.1)  # Wait a tiny bit
+
+                if os.name == "nt":
+                    if msvcrt.kbhit():
+                        msvcrt.getch()  # Consume the keypress
+                        interrupted_by_user = True
+                        break
+                else:
+                    # Unix/Linux (SSH environments)
+                    i, _, _ = select.select([sys.stdin], [], [], 0)
+                    if i:
+                        sys.stdin.readline()  # Consume the enter keypress
+                        interrupted_by_user = True
+                        break
+
+            if interrupted_by_user:
+                print(
+                    "\n\n  [!] Generation forcefully halted by user (ENTER key pressed)."
+                )
+                global_interrupt.is_interrupted = True
+                gen_thread.join()  # Wait for the thread to exit cleanly
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                 print("=" * 70)
-                continue  # Instantly skip the metrics and loop back to the [USER]: prompt
+                continue  # Loop back to [USER]: prompt instantly
             # -----------------------------
 
+            response = response_container[0]
             gen_time = time.time() - t_gen
 
             print("-" * 50)
@@ -234,8 +289,8 @@ def main():
             )
             print("=" * 70)
 
+        # Catch Ctrl+C ONLY when the user is typing at the empty [USER]: prompt
         except KeyboardInterrupt:
-            # If you press Ctrl+C while sitting at the empty [USER]: prompt, it exits the script
             print("\nShutting down pipeline...")
             break
         except Exception as e:

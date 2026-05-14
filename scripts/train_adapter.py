@@ -20,6 +20,7 @@ from src.data_ops.medical_meadow_flashcards_preprocessor import (
 )
 from src.data_ops.medqa_preprocessor import MedQAPreprocessor
 from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
+from src.data_ops.icliniq_genmed_preprocessor import CustomMedicalPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
 
@@ -89,6 +90,7 @@ def parse_args():
             "GBaker/MedQA-USMLE-4-options",
             "m-a-p/CodeFeedback-Filtered-Instruction",
             "meta-math/MetaMathQA",
+            "ozgur-coban/medical-lora-10k",  # <-- Added your custom HF repo
             "mixed",  # Triggers the combined dataset logic
         ],
         required=True,
@@ -118,7 +120,8 @@ def main():
         p_code = CodeFeedbackPreprocessor(
             tokenizer, max_length=args.max_length, data_size=args.data_size
         )
-        p_med = MedicalMeadowFlashcardsPreprocessor(
+        # Replaced meadow flashcards
+        p_med = CustomMedicalPreprocessor(
             tokenizer, max_length=args.max_length, data_size=args.data_size
         )
 
@@ -163,6 +166,10 @@ def main():
             )
         elif args.dataset == "meta-math/MetaMathQA":
             preprocessor = MetaMathPreprocessor(
+                tokenizer, max_length=args.max_length, data_size=args.data_size
+            )
+        elif args.dataset == "ozgur-coban/medical-lora-10k":
+            preprocessor = CustomMedicalPreprocessor(
                 tokenizer, max_length=args.max_length, data_size=args.data_size
             )
         else:
