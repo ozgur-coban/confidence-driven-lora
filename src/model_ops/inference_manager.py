@@ -1,4 +1,5 @@
 import torch
+from typing import Union
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -11,6 +12,7 @@ from config.few_shot_prefixes import FEW_SHOT_PREFIXES
 
 
 class InferenceManager:
+    model: Union[AutoModelForCausalLM, PeftModel]
     def __init__(
         self,
         base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
