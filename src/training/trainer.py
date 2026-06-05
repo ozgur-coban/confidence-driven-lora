@@ -25,6 +25,7 @@ class AdapterTrainer:
             model=self.model,
             padding=True,
             return_tensors="pt",
+            label_pad_token_id=-100, # Explicitly pad custom labels with ignore_index
         )
 
     def get_training_args(
@@ -64,6 +65,7 @@ class AdapterTrainer:
             metric_for_best_model="loss",
             greater_is_better=False,
             report_to="none",
+            remove_unused_columns=False, # Protects the manually created labels tensor
         )
 
     def train(
