@@ -1,3 +1,7 @@
+import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from datasets import load_dataset, DatasetDict
 from .base_preprocessor import BasePreprocessor
 
@@ -9,20 +13,21 @@ class MetaMathPreprocessor(BasePreprocessor):
 
     def load_data(self) -> DatasetDict:
         """Loads, slices for speed, filters by strict length, and splits 5% for eval."""
-        # 1. Load raw dataset (Change the path based on the preprocessor)
+        # 1. Load raw dataset 
         raw_dataset = load_dataset("meta-math/MetaMathQA", split="train")
 
         # 2. SPEED OPTIMIZATION: Slice a "safe pool" before the expensive filter
-        #  grab 5x  need
         safe_pool_size = min(self.data_size * 5, len(raw_dataset))
         print(f"Slicing to {safe_pool_size} samples before filtering for speed...")
         raw_dataset = raw_dataset.shuffle(seed=42).select(range(safe_pool_size))
 
         # 3. FILTER LOGIC
         def is_within_length(example):
-            messages = self.format_prompt(example)["messages"]
-            full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
-            return len(self.tokenizer.encode(full_text)) <= self.max_length
+            # Simulate the exact base model formatting, applying target standardization first
+            q = example["query"]
+            a = self._standardize_target(example["response"])
+            full_text = f"Question: {q}\nAnswer:\n{a}{self.tokenizer.eos_token}"
+            return len(self.tokenizer.encode(full_text, add_special_tokens=True)) <= self.max_length
 
         print(f"Filtering dataset for max_seq_length <= {self.max_length}")
         filtered_dataset = raw_dataset.filter(is_within_length, num_proc=4)
@@ -33,7 +38,7 @@ class MetaMathPreprocessor(BasePreprocessor):
         subset_size = min(self.data_size, len(shuffled_dataset))
         subset_dataset = shuffled_dataset.select(range(subset_size))
 
-        # 5.  Exact 5% split for Trainer validation
+        # 5. Exact 5% split for Trainer validation
         split_data = subset_dataset.train_test_split(test_size=0.05, seed=42)
 
         # 6. Standardize dictionary keys for train_adapter.py
@@ -62,15 +67,9 @@ class MetaMathPreprocessor(BasePreprocessor):
         return text
 
     def format_prompt(self, example: dict) -> dict:
-        """Maps the raw columns to the Llama 3 chat format."""
+        """Extracts the raw query and standardized response into standard keys."""
         standardized_ans = self._standardize_target(example["response"])
-
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a mathematical reasoning assistant. Solve the problem step-by-step and provide the final answer after ####.",
-            },
-            {"role": "user", "content": example["query"]},
-            {"role": "assistant", "content": standardized_ans},
-        ]
-        return {"messages": messages}
+        return {
+            "prompt": example["query"],
+            "output": standardized_ans
+        }

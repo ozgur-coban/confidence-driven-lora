@@ -6,7 +6,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from datasets import load_dataset, Dataset, DatasetDict
 from transformers import AutoTokenizer
 from .base_preprocessor import BasePreprocessor
-from config.domain_registry import DOMAIN_REGISTRY
 
 
 class CodeFeedbackPreprocessor(BasePreprocessor):
@@ -15,7 +14,6 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
     ):
         super().__init__(tokenizer, max_length)
         self.data_size = data_size
-        self.domain_cfg = DOMAIN_REGISTRY["code"]
 
     def load_data(self) -> DatasetDict:
         """Loads CodeFeedback, filters for Python, slices for speed, extracts pure code, filters by length, and subsets."""
@@ -50,9 +48,11 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
 
         # 5. FILTER LOGIC (Strict Token Length)
         def is_within_length(example):
-            messages = self.format_prompt(example)["messages"]
-            full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
-            return len(self.tokenizer.encode(full_text)) <= self.max_length
+            # Simulate the exact base model formatting from train_adapter.py to check token length
+            q = str(example.get("query", "")).strip()
+            a = str(example.get("pure_code", "")).strip()
+            full_text = f"Question: {q}\nAnswer:\n{a}{self.tokenizer.eos_token}"
+            return len(self.tokenizer.encode(full_text, add_special_tokens=True)) <= self.max_length
 
         print(f"Filtering dataset for max_seq_length <= {self.max_length}...")
         filtered_dataset = hf_dataset.filter(is_within_length, num_proc=4)
@@ -76,18 +76,8 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
         return self.dataset
 
     def format_prompt(self, example: dict) -> dict:
-        """
-        Maps the pure algorithmic task to Llama 3 format.
-        Uses the shared system prompt from the code domain registry.
-        """
-        messages = [
-            {"role": "system", "content": self.domain_cfg["system"]},
-            {"role": "user", "content": str(example.get("query", "")).strip()},
-            {
-                "role": "assistant",
-                "content": str(
-                    example.get("pure_code", "")
-                ).strip(),  # Using the extracted code!
-            },
-        ]
-        return {"messages": messages}
+        """Extracts the raw query and python code into standard keys."""
+        return {
+            "prompt": str(example.get("query", "")).strip(),
+            "output": str(example.get("pure_code", "")).strip(),
+        }
