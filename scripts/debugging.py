@@ -1,12 +1,29 @@
 import os
 import sys
+import torch
 from transformers import AutoTokenizer
 from datasets import Dataset
+# Fix for Windows DLL loading
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+torch_lib = os.path.join(sys.prefix, "Lib", "site-packages", "torch", "lib")
+if os.path.exists(torch_lib):
+    os.add_dll_directory(torch_lib)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
 from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
 from src.data_ops.codefeedback_preprocessor import CodeFeedbackPreprocessor
+from src.model_ops.lora_manager import LoraManager
+from src.training.trainer import AdapterTrainer
+from dotenv import load_dotenv
+from huggingface_hub import login
+
+load_dotenv()
+hf_token = os.getenv("HF_TOKEN")
+if hf_token:
+    login(token=hf_token)
+else:
+    print("Error: HF_TOKEN not found in .env file")
 
 def format_dataset_for_base_model(dataset, tokenizer, max_length=512,is_verbose=False):
     """The exact function from your train_adapter.py script."""
@@ -106,12 +123,95 @@ def test_real_dataset(dataset_preprocessor,is_verbose=False):
     for i in range(len(input_ids)):
         token_str = repr(tokenizer.decode([input_ids[i]]))
         print(f"{token_str:<25} | {input_ids[i]:<10} | {labels[i]:<10} | {attention_mask[i]:<10}")
+def run_overfit_test():
+    print("=== STARTING OVERFIT VERIFICATION ===")
+    model_id = "meta-llama/Llama-3.2-3B"
+    max_length = 256
     
-def main():
-    test_real_dataset(GSM8KPreprocessor,is_verbose=True)
-    test_real_dataset(MetaMathPreprocessor,is_verbose=True)
-    test_real_dataset(CodeFeedbackPreprocessor,is_verbose=True)
+    print("1. Loading tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(model_id, clean_up_tokenization_spaces=False)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
+    print("2. Extracting exactly 2 rows of test data...")
+    preprocessor = GSM8KPreprocessor(tokenizer, max_length=max_length, data_size=2)
+    raw_dataset = preprocessor.process()
+    
+    train_data = format_dataset_for_base_model(raw_dataset["train"], tokenizer, max_length)
+    
+    # Save the raw text of the first question to test generation
+    test_question = raw_dataset["train"][0]["prompt"]
+    target_answer = raw_dataset["train"][0]["output"]
+
+    print("3. Initializing base model in 4-bit...")
+    lora_manager = LoraManager(model_id=model_id)
+    base_model = lora_manager.load_base_model()
+    peft_model = lora_manager.get_peft_setup(
+        base_model, r=32, alpha=64, 
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    )
+
+    # --- BEFORE TRAINING TEST ---
+    print(f"\n{'='*50}")
+    print(" BEFORE TRAINING INFERENCE")
+    print(f"{'='*50}")
+    inference_prompt = f"Question: {test_question}\nAnswer:\n"
+    inputs = tokenizer(inference_prompt, return_tensors="pt").to(peft_model.device)
+    
+    peft_model.eval() # Set to eval mode for generation
+    with torch.no_grad():
+        outputs = peft_model.generate(
+            **inputs, 
+            max_new_tokens=100, 
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id
+        )
+    print(tokenizer.decode(outputs[0], skip_special_tokens=False))
+    print(f"{'='*50}\n")
+
+    # --- AGGRESSIVE OVERFIT TRAINING ---
+    print("4. FIRING OVERFIT TRAINING LOOP (20 Epochs)...")
+    peft_model.train() # Set back to train mode
+    trainer = AdapterTrainer(
+        model=peft_model,
+        tokenizer=tokenizer,
+        train_dataset=train_data,
+        eval_dataset=train_data, # Using train data for eval to bypass crash on 0 size
+        output_dir="./models/debug_overfit"
+    )
+
+    # We train on 2 rows with batch_size=2 for 20 epochs. 
+    # This forces exactly 20 optimization steps. Loss should approach 0.
+    trainer.train(
+        adapter_name="debug_math_lora",
+        batch_size=2,
+        grad_accum=1,  
+        epochs=20,
+        logging_steps=1,
+        learning_rate=5e-4, # Higher learning rate to force rapid memorization
+        save_steps=50 # Avoid saving checkpoints during this fast run
+    )
+
+    # --- AFTER TRAINING TEST ---
+    print(f"\n{'='*50}")
+    print(" AFTER TRAINING INFERENCE")
+    print(f"{'='*50}")
+    print(f"TARGET GOAL WAS:\n{target_answer}\n")
+    print("MODEL OUTPUT IS:")
+    
+    peft_model.eval()
+    with torch.no_grad():
+        outputs_after = peft_model.generate(
+            **inputs, 
+            max_new_tokens=100, 
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id
+        )
+    print(tokenizer.decode(outputs_after[0], skip_special_tokens=False))
+    print(f"{'='*50}")
+    print("=== OVERFIT DEBUG COMPLETE ===")
+def main():
+    run_overfit_test()
 
 if __name__ == "__main__":
     main()

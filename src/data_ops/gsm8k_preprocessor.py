@@ -17,7 +17,7 @@ class GSM8KPreprocessor(BasePreprocessor):
     def load_data(self) -> DatasetDict:
         """Loads, slices for speed, filters by strict length, and splits 5% for eval."""
         # 1. Load raw dataset
-        raw_dataset = load_dataset("openai/gsm8k", name="socratic", split="train")
+        raw_dataset = load_dataset("openai/gsm8k", name="main", split="train")
 
         # 2. SPEED OPTIMIZATION: Slice a "safe pool" before the expensive filter
         safe_pool_size = min(self.data_size * 5, len(raw_dataset))
