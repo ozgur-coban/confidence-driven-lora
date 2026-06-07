@@ -49,6 +49,15 @@ def parse_args():
         help="Base directory to save the trained adapters.",
     )
     parser.add_argument(
+        "--warmup_steps", type=int, default=50, help="Number of warmup steps."
+    )
+    parser.add_argument(
+        "--eval_steps", type=int, default=100, help="Evaluate every X steps."
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducibility."
+    )
+    parser.add_argument(
         "--save_steps", type=int, default=100, help="How often to save and evaluate."
     )
     parser.add_argument(
@@ -260,6 +269,9 @@ def main():
         learning_rate=args.learning_rate,
         save_steps=args.save_steps,
         resume_from_checkpoint=args.resume_from_checkpoint,
+        warmup_steps=args.warmup_steps,
+        eval_steps=args.eval_steps,
+        seed=args.seed,
     )
     print("--- Pipeline Execution Complete ---")
 
