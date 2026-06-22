@@ -142,8 +142,8 @@ def main():
 
     def is_within_length(example):
         q = example["question"]
-        if args.use_few_shot:
-            q = build_static_few_shot(q)
+        # if args.use_few_shot:
+            # q = build_static_few_shot(q)
         # Simulate base model layout
         full_text = f"Question: {q}\nAnswer:\n{example['answer']}{tokenizer.eos_token}"
         return len(tokenizer.encode(full_text)) <= args.max_length
