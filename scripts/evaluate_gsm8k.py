@@ -116,11 +116,12 @@ def extract_model_answer(text: str) -> str:
 
 
 def build_static_few_shot(current_query: str) -> str:
-    """Provides a strict Base Model autocomplete few-shot context."""
-    # Hardcoded a single perfect base-model format example for math
+    """Provides a strict Base Model autocomplete few-shot context, including GSM8K calculator syntax."""
     example = (
         "Question: Natalia sold clips to 48 of her friends in April, and then she sold half as many clips in May. How many clips did Natalia sell altogether in April and May?\n"
-        "Answer:\nNatalia sold 48 / 2 = 24 clips in May.\nNatalia sold 48 + 24 = 72 clips altogether in April and May.\n#### 72\n\n"
+        "Answer:\nNatalia sold 48 / 2 = <<48/2=24>>24 clips in May.\n"
+        "Natalia sold 48 + 24 = <<48+24=72>>72 clips altogether in April and May.\n"
+        "#### 72\n\n"
     )
     return f"{example}Question: {current_query}\n"
 
