@@ -15,15 +15,11 @@ from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
 from src.data_ops.codefeedback_preprocessor import CodeFeedbackPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
+from scripts.evaluate_gsm8k import main as gsm8k_main
 from dotenv import load_dotenv
 from huggingface_hub import login
 
-load_dotenv()
-hf_token = os.getenv("HF_TOKEN")
-if hf_token:
-    login(token=hf_token)
-else:
-    print("Error: HF_TOKEN not found in .env file")
+
 
 def format_dataset_for_base_model(dataset, tokenizer, max_length=512,is_verbose=False):
     """The exact function from your train_adapter.py script."""
@@ -210,8 +206,43 @@ def run_overfit_test():
     print(tokenizer.decode(outputs_after[0], skip_special_tokens=False))
     print(f"{'='*50}")
     print("=== OVERFIT DEBUG COMPLETE ===")
+
+def debug_gsm8k_evaluation():
+    print("=== STARTING LOCAL EVALUATION DEBUG ===")
+    
+    # Store the original sys.argv to prevent side effects
+    original_argv = sys.argv
+    
+    # Inject the exact CLI parameters needed for the micro-test
+    sys.argv = [
+        "evaluate_gsm8k.py", 
+        "--base_model_id", "meta-llama/Llama-3.2-3B",
+        # "--adapter_path", "./models/adapters/adapter_math/math_gsm8k_main_3b_base_07.06.2026",
+        "--domain", "math",
+        "--num_samples", "2",  # Restrict to 2 rows to prevent local OOM and save time
+        "--max_length", "512",
+        "--output_file", "artifacts/generated_results/debug_gsm8k_eval_base_results.json"
+    ]
+    
+    try:
+        # Execute the production pipeline
+        gsm8k_main()
+        print("\n=== EVALUATION DEBUG PASSED ===")
+        print("Check 'artifacts/generated_results/debug_gsm8k_eval_results.json' to verify extraction accuracy.")
+    except Exception as e:
+        print("\n=== EVALUATION DEBUG CRASHED ===")
+        raise e
+    finally:
+        # Safely restore the original system arguments
+        sys.argv = original_argv
 def main():
-    run_overfit_test()
+    load_dotenv()
+    hf_token = os.getenv("HF_TOKEN")
+    if hf_token:
+        login(token=hf_token)
+    else:
+        print("Error: HF_TOKEN not found in .env file")
+    debug_gsm8k_evaluation()
 
 if __name__ == "__main__":
     main()
