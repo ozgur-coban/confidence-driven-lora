@@ -16,6 +16,7 @@ from src.data_ops.codefeedback_preprocessor import CodeFeedbackPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
 from scripts.evaluate_gsm8k import main as gsm8k_main
+from scripts.evaluate_mbpp import main as mbpp_main
 from dotenv import load_dotenv
 from huggingface_hub import login
 
@@ -235,6 +236,35 @@ def debug_gsm8k_evaluation():
     finally:
         # Safely restore the original system arguments
         sys.argv = original_argv
+def debug_mbpp_evaluation():
+    print("=== STARTING LOCAL MBPP EVALUATION DEBUG ===")
+    
+    # Store the original sys.argv to prevent side effects
+    original_argv = sys.argv
+    
+    # Inject the exact CLI parameters needed for the micro-test
+    sys.argv = [
+        "evaluate_mbpp.py", 
+        "--base_model_id", "meta-llama/Llama-3.2-3B",
+        # Uncomment and update the line below to test with your CodeFeedback adapter
+        # "--adapter_path", "./models/adapters/adapter_code/code_codefeedback_3b_base_07.06.2026",
+        "--domain", "code",
+        "--num_samples", "2",  # Restrict to 2 rows to prevent local OOM
+        "--max_length", "512",
+        "--output_file", "artifacts/generated_results/debug_mbpp_eval_base_results.json"
+    ]
+    
+    try:
+        # Execute the production pipeline
+        mbpp_main()
+        print("\n=== MBPP EVALUATION DEBUG PASSED ===")
+        print("Check 'artifacts/generated_results/debug_mbpp_eval_base_results.json' to verify generation.")
+    except Exception as e:
+        print("\n=== MBPP EVALUATION DEBUG CRASHED ===")
+        raise e
+    finally:
+        # Safely restore the original system arguments
+        sys.argv = original_argv
 def main():
     load_dotenv()
     hf_token = os.getenv("HF_TOKEN")
@@ -242,7 +272,7 @@ def main():
         login(token=hf_token)
     else:
         print("Error: HF_TOKEN not found in .env file")
-    debug_gsm8k_evaluation()
+    debug_mbpp_evaluation()
 
 if __name__ == "__main__":
     main()
