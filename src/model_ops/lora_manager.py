@@ -4,13 +4,13 @@ from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_tr
 
 
 class LoraManager:
-    def __init__(self, model_id: str = "meta-llama/Meta-Llama-3.1-8B-Instruct"):
+    def __init__(self, model_id: str = "meta-llama/Llama-3.2-3B"):
         self.model_id = model_id
         # Automatically detect GPU
         self.device_map = "auto" if torch.cuda.is_available() else "cpu"
 
     def load_base_model(self):
-        """Loads the base Llama 3 model in 4-bit quantization for Colab T4."""
+        """Loads the base Llama 3.2 model in 4-bit quantization for Colab T4/Local GPUs."""
         print(f"Loading base model in 4-bit: {self.model_id}...")
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -29,7 +29,7 @@ class LoraManager:
         return model
 
     def get_peft_setup(
-        self, model, r: int = 16, alpha: int = 32, target_modules: list = None
+        self, model, r: int = 32, alpha: int = 64, target_modules: list = None
     ):
         """Wraps the base model with the LoRA adapter configuration."""
         print("Injecting LoRA adapters...")

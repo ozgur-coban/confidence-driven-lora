@@ -15,9 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
 from src.data_ops.codealpaca_preprocessor import CodeAlpacaPreprocessor
 from src.data_ops.codefeedback_preprocessor import CodeFeedbackPreprocessor
-from src.data_ops.medical_meadow_flashcards_preprocessor import (
-    MedicalMeadowFlashcardsPreprocessor,
-)
+from src.data_ops.medical_meadow_flashcards_preprocessor import MedicalMeadowFlashcardsPreprocessor
 from src.data_ops.medqa_preprocessor import MedQAPreprocessor
 from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
 from src.data_ops.icliniq_genmed_preprocessor import CustomMedicalPreprocessor
@@ -29,8 +27,9 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Train a single-domain or mixed LoRA adapter."
     )
+    # Updated to base model
     parser.add_argument(
-        "--model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct"
+        "--model_id", type=str, default="meta-llama/Llama-3.2-3B"
     )
     parser.add_argument("--adapter_name", type=str, required=True)
     parser.add_argument("--max_length", type=int, default=512)
@@ -50,6 +49,15 @@ def parse_args():
         help="Base directory to save the trained adapters.",
     )
     parser.add_argument(
+        "--warmup_steps", type=int, default=50, help="Number of warmup steps."
+    )
+    parser.add_argument(
+        "--eval_steps", type=int, default=100, help="Evaluate every X steps."
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducibility."
+    )
+    parser.add_argument(
         "--save_steps", type=int, default=100, help="How often to save and evaluate."
     )
     parser.add_argument(
@@ -59,9 +67,9 @@ def parse_args():
         help="Path to a specific checkpoint folder to resume training.",
     )
 
-    # LORA arguments
-    parser.add_argument("--r", type=int, default=16, help="LoRA rank.")
-    parser.add_argument("--lora_alpha", type=int, default=32, help="LoRA alpha.")
+    # LORA arguments updated to match LoRA Soups paper defaults
+    parser.add_argument("--r", type=int, default=32, help="LoRA rank.")
+    parser.add_argument("--lora_alpha", type=int, default=64, help="LoRA alpha.")
     parser.add_argument(
         "--target_modules",
         nargs="+",
@@ -90,14 +98,50 @@ def parse_args():
             "GBaker/MedQA-USMLE-4-options",
             "m-a-p/CodeFeedback-Filtered-Instruction",
             "meta-math/MetaMathQA",
-            "ozgur-coban/medical-lora-10k",  # <-- Added your custom HF repo
-            "mixed",  # Triggers the combined dataset logic
+            "ozgur-coban/medical-lora-10k",  
+            "mixed",  
         ],
         required=True,
         help="Which dataset/domain to train on.",
     )
 
     return parser.parse_args()
+
+
+def format_dataset_for_base_model(dataset, tokenizer, max_length):
+    """
+    Manually creates the 'labels' tensor by concatenating token IDs to prevent 
+    BPE merging bugs, masking the prompt portion with -100.
+    """
+    def map_format(example):
+        q = example.get("prompt") or example.get("instruction") or example.get("question") or ""
+        a = example.get("output") or example.get("response") or example.get("answer") or ""
+        
+        prompt_text = f"Question: {q}\nAnswer:\n"
+        answer_text = f"{a}{tokenizer.eos_token}"
+        
+        # Tokenize separately
+        prompt_ids = tokenizer(prompt_text, add_special_tokens=True)["input_ids"]
+        answer_ids = tokenizer(answer_text, add_special_tokens=False)["input_ids"]
+        
+        # Concatenate IDs
+        input_ids = prompt_ids + answer_ids
+        labels = [-100] * len(prompt_ids) + answer_ids
+        
+        # Enforce max_length manually since we concatenated outside the tokenizer
+        if len(input_ids) > max_length:
+            input_ids = input_ids[:max_length]
+            labels = labels[:max_length]
+            
+        # The trainer expects a dictionary of tensors/lists
+        return {
+            "input_ids": input_ids,
+            "labels": labels,
+            # Generate a standard attention mask of 1s
+            "attention_mask": [1] * len(input_ids) 
+        }
+
+    return dataset.map(map_format, remove_columns=dataset.column_names, num_proc=4)
 
 
 def main():
@@ -107,25 +151,24 @@ def main():
     # 1. Initialize Tokenizer
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(args.model_id)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     # 2. Preprocess Data
     print("Initializing Preprocessor...")
 
     if args.dataset == "mixed":
         print(f"--- Building Mixed Dataset ({args.data_size} samples per domain) ---")
-        # Initialize the three core preprocessors
         p_math = GSM8KPreprocessor(
             tokenizer, max_length=args.max_length, data_size=args.data_size
         )
         p_code = CodeFeedbackPreprocessor(
             tokenizer, max_length=args.max_length, data_size=args.data_size
         )
-        # Replaced meadow flashcards
         p_med = CustomMedicalPreprocessor(
             tokenizer, max_length=args.max_length, data_size=args.data_size
         )
 
-        # Process all three
         print("Processing Math Data...")
         ds_math = p_math.process()
         print("Processing Code Data...")
@@ -133,7 +176,6 @@ def main():
         print("Processing Medical Data...")
         ds_med = p_med.process()
 
-        # Combine and Shuffle
         print("Concatenating and shuffling datasets...")
         train_data = concatenate_datasets(
             [ds_math["train"], ds_code["train"], ds_med["train"]]
@@ -182,6 +224,11 @@ def main():
         else:
             eval_data = processed_dataset["test"]
 
+    # --- BASE MODEL FORMATTING OVERRIDE ---
+    print("Formatting datasets for Base Model (removing instruct templates & applying -100 mask)...")
+    train_data = format_dataset_for_base_model(train_data, tokenizer, args.max_length)
+    eval_data = format_dataset_for_base_model(eval_data, tokenizer, args.max_length)
+
     print(f"Training dataset ready: {len(train_data)} samples.")
     print(f"Evaluation dataset ready: {len(eval_data)} samples.")
 
@@ -204,6 +251,7 @@ def main():
     print(f" Gradient Accum:    {args.grad_accum}")
     print(f" Learning Rate:     {args.learning_rate}")
     print(f"{'=' * 60}\n")
+    
     trainer = AdapterTrainer(
         model=peft_model,
         tokenizer=tokenizer,
@@ -221,6 +269,9 @@ def main():
         learning_rate=args.learning_rate,
         save_steps=args.save_steps,
         resume_from_checkpoint=args.resume_from_checkpoint,
+        warmup_steps=args.warmup_steps,
+        eval_steps=args.eval_steps,
+        seed=args.seed,
     )
     print("--- Pipeline Execution Complete ---")
 

@@ -5,7 +5,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from datasets import load_dataset, DatasetDict
 from transformers import AutoTokenizer
 from .base_preprocessor import BasePreprocessor
-from config.domain_registry import DOMAIN_REGISTRY
 
 
 class GSM8KPreprocessor(BasePreprocessor):
@@ -14,24 +13,24 @@ class GSM8KPreprocessor(BasePreprocessor):
     ):
         super().__init__(tokenizer, max_length)
         self.data_size = data_size
-        self.domain_cfg = DOMAIN_REGISTRY["math"]
 
     def load_data(self) -> DatasetDict:
         """Loads, slices for speed, filters by strict length, and splits 5% for eval."""
-        # 1. Load raw dataset (Change the path based on the preprocessor)
-        raw_dataset = load_dataset("openai/gsm8k", name="socratic", split="train")
+        # 1. Load raw dataset
+        raw_dataset = load_dataset("openai/gsm8k", name="main", split="train")
 
         # 2. SPEED OPTIMIZATION: Slice a "safe pool" before the expensive filter
-        #  grab 5x  need
         safe_pool_size = min(self.data_size * 5, len(raw_dataset))
         print(f"Slicing to {safe_pool_size} samples before filtering for speed...")
         raw_dataset = raw_dataset.shuffle(seed=42).select(range(safe_pool_size))
 
         # 3. FILTER LOGIC
         def is_within_length(example):
-            messages = self.format_prompt(example)["messages"]
-            full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
-            return len(self.tokenizer.encode(full_text)) <= self.max_length
+            # Simulate the exact base model formatting from train_adapter.py to check token length
+            q = example["question"]
+            a = example["answer"]
+            full_text = f"Question: {q}\nAnswer:\n{a}{self.tokenizer.eos_token}"
+            return len(self.tokenizer.encode(full_text, add_special_tokens=True)) <= self.max_length
 
         print(f"Filtering dataset for max_seq_length <= {self.max_length}")
         filtered_dataset = raw_dataset.filter(is_within_length, num_proc=4)
@@ -42,7 +41,7 @@ class GSM8KPreprocessor(BasePreprocessor):
         subset_size = min(self.data_size, len(shuffled_dataset))
         subset_dataset = shuffled_dataset.select(range(subset_size))
 
-        # 5.  Exact 5% split for Trainer validation
+        # 5. Exact 5% split for Trainer validation
         split_data = subset_dataset.train_test_split(test_size=0.05, seed=42)
 
         # 6. Standardize dictionary keys for train_adapter.py
@@ -53,10 +52,8 @@ class GSM8KPreprocessor(BasePreprocessor):
         return self.dataset
 
     def format_prompt(self, example: dict) -> dict:
-        """Maps the raw question and answer columns to the Llama 3 chat format."""
-        messages = [
-            {"role": "system", "content": self.domain_cfg["system"]},
-            {"role": "user", "content": example["question"]},
-            {"role": "assistant", "content": example["answer"]},
-        ]
-        return {"messages": messages}
+        """Extracts the raw question and answer into standard keys."""
+        return {
+            "prompt": example["question"],
+            "output": example["answer"]
+        }

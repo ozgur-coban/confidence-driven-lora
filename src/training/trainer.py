@@ -25,6 +25,7 @@ class AdapterTrainer:
             model=self.model,
             padding=True,
             return_tensors="pt",
+            label_pad_token_id=-100, # Explicitly pad custom labels with ignore_index
         )
 
     def get_training_args(
@@ -36,6 +37,9 @@ class AdapterTrainer:
         logging_steps: int,
         learning_rate: float,
         save_steps: int,
+        warmup_steps: int,
+        eval_steps: int,
+        seed: int,
     ) -> TrainingArguments:
         """Configures the hardware utilization and learning hyperparameters."""
         save_path = os.path.join(self.output_dir, adapter_name)
@@ -56,14 +60,16 @@ class AdapterTrainer:
             bf16=False,
             optim="adamw_torch",
             max_grad_norm=0.3,
-            warmup_ratio=0.03,
-            eval_steps=save_steps,  # Sync eval with saving
-            save_steps=save_steps,  # Dynamic save steps
+            warmup_steps=warmup_steps,  # Replaces deprecated warmup_ratio
+            eval_steps=eval_steps,      # Decoupled from save_steps
+            save_steps=save_steps,
+            seed=seed,                  # Ensures reproducibility
             save_total_limit=2,
             load_best_model_at_end=True,
             metric_for_best_model="loss",
             greater_is_better=False,
             report_to="none",
+            remove_unused_columns=False, # Protects the manually created labels tensor
         )
 
     def train(
@@ -76,6 +82,9 @@ class AdapterTrainer:
         learning_rate: float = 2e-4,
         save_steps: int = 100,
         resume_from_checkpoint: str = None,
+        warmup_steps: int = 50,
+        eval_steps: int = 100,
+        seed: int = 42,
     ):
         """Initializes the Trainer and executes the training loop."""
         args = self.get_training_args(
@@ -86,6 +95,9 @@ class AdapterTrainer:
             logging_steps,
             learning_rate,
             save_steps,
+            warmup_steps,
+            eval_steps,
+            seed,
         )
 
         trainer = Trainer(

@@ -9,16 +9,14 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 from datasets import load_dataset
-from config.domain_registry import DOMAIN_REGISTRY
-from config.few_shot_prefixes import FEW_SHOT_PREFIXES
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Generate responses for the MBPP dataset using a trained LoRA adapter or base model."
+        description="Generate base-model code responses for the MBPP dataset."
     )
     parser.add_argument(
-        "--base_model_id", type=str, default="meta-llama/Meta-Llama-3.1-8B-Instruct"
+        "--base_model_id", type=str, default="meta-llama/Llama-3.2-3B"
     )
     parser.add_argument(
         "--adapter_path",
@@ -41,8 +39,8 @@ def parse_args():
     parser.add_argument(
         "--max_length",
         type=int,
-        default=4096,
-        help="Max token length to prevent VRAM OOM. Bumped to 4096 for Code Few-Shot.",
+        default=512,
+        help="Max token length to maintain training distribution parity.",
     )
     parser.add_argument(
         "--output_file",
@@ -52,34 +50,31 @@ def parse_args():
     parser.add_argument(
         "--use_few_shot",
         action="store_true",
-        help="Enable few-shot examples from the dictionary.",
+        help="Enable few-shot examples.",
     )
     return parser.parse_args()
 
 
-def build_static_few_shot(current_query: str, domain: str) -> str:
-    """Prepends few-shot examples and adds the strict context boundary."""
-    prefix = FEW_SHOT_PREFIXES.get(domain, "")
-    if not prefix.strip():
-        return current_query
-    return (
-        f"{prefix}\nNow solve the following problem:\nInput: {current_query}\nAnswer:"
+def build_static_few_shot(current_query: str) -> str:
+    """Provides a strict Base Model autocomplete few-shot context for Python."""
+    example = (
+        "Question: Write a python function to add two numbers.\n"
+        "Answer:\n"
+        "def add_numbers(a, b):\n"
+        "    return a + b\n\n"
     )
+    return f"{example}Question: {current_query}\n"
 
 
 def main():
     args = parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if args.domain not in DOMAIN_REGISTRY:
-        raise ValueError(f"Domain '{args.domain}' not found in DOMAIN_REGISTRY.")
-    domain_cfg = DOMAIN_REGISTRY[args.domain]
-
     print(f"1. Loading Tokenizer and Data for domain: {args.domain}")
     tokenizer = AutoTokenizer.from_pretrained(args.base_model_id)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
-    # MBPP usually has a standard 'test' split.
-    # 1.  define the direct URLs to the data files to bypass the script
     raw_test_set = load_dataset(
         "google-research-datasets/mbpp", "sanitized", split="test"
     )
@@ -87,18 +82,10 @@ def main():
     print(f"Filtering test set for strict max_seq_length <= {args.max_length}...")
 
     def is_within_length(example):
-        user_content = str(example["prompt"]).strip()
-
-        # Apply few-shot during the token counting phase if the flag is active
-        if args.use_few_shot:
-            user_content = build_static_few_shot(user_content, args.domain)
-
-        messages = [
-            {"role": "system", "content": domain_cfg["system"]},
-            {"role": "user", "content": user_content},
-            {"role": "assistant", "content": str(example["code"]).strip()},
-        ]
-        full_text = tokenizer.apply_chat_template(messages, tokenize=False)
+        # Count strictly zero-shot tokens to ensure 1-to-1 matching across all test runs
+        q = str(example["prompt"]).strip()
+        code = str(example["code"]).strip()
+        full_text = f"Question: {q}\nAnswer:\n{code}{tokenizer.eos_token}"
         return len(tokenizer.encode(full_text)) <= args.max_length
 
     filtered_test_set = raw_test_set.filter(is_within_length, num_proc=4)
@@ -129,9 +116,7 @@ def main():
         print(f"3. Injecting LoRA Adapter from {args.adapter_path}...")
         model = PeftModel.from_pretrained(base_model, args.adapter_path)
     else:
-        print(
-            "3. No adapter path provided. Bypassing adapter: Evaluating Base Model only..."
-        )
+        print("3. No adapter path provided. Evaluating Base Model only...")
         model = base_model
 
     model.eval()
@@ -145,25 +130,20 @@ def main():
         user_query = str(example["prompt"]).strip()
         ground_truth_code = str(example["code"]).strip()
 
-        user_content = user_query
-
-        # Apply the few-shot builder before generation
         if args.use_few_shot:
-            user_content = build_static_few_shot(user_content, args.domain)
+            q = build_static_few_shot(user_query)
+            prompt = f"{q}Answer:\n"
+        else:
+            prompt = f"Question: {user_query}\nAnswer:\n"
 
-        messages = [
-            {"role": "system", "content": domain_cfg["system"]},
-            {"role": "user", "content": user_content},
-        ]
-
-        prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
         with torch.no_grad():
             outputs = model.generate(
-                **inputs, **domain_cfg["kwargs"], pad_token_id=tokenizer.eos_token_id
+                **inputs,
+                max_new_tokens=512, # Bound generation
+                pad_token_id=tokenizer.eos_token_id,
+                do_sample=False, # Greedy decoding for exact syntax
             )
 
         input_length = inputs["input_ids"].shape[1]
@@ -174,7 +154,7 @@ def main():
                 "task_id": example.get("task_id", i),
                 "query": user_query,
                 "ground_truth_code": ground_truth_code,
-                "raw_output": response,
+                "raw_output": response.strip(),
             }
         )
 
@@ -182,12 +162,9 @@ def main():
     print("GENERATION COMPLETE")
     print("=" * 50)
     print(f"Total Samples Processed: {len(test_data)}")
-    print(
-        "Note: Output is dumped directly to JSON. No execution-based accuracy was calculated."
-    )
+    print("Output dumped directly to JSON. No execution-based accuracy calculated.")
     print("=" * 50)
 
-    # Save detailed logs
     os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
     with open(args.output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4)
