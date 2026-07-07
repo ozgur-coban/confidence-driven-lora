@@ -272,7 +272,7 @@ def debug_inference_manager():
     raw_adapter_paths = {
         "code": "./models/adapters/adapter_code/code_codefeedback_3b_base_07.06.2026",
         "math": "./models/adapters/adapter_math/math_gsm8k_main_3b_base_07.06.2026",
-        "hybrid":""
+        "hybrid":"./models/adapters/adapter_hybrid/math_code_ties_07.06.2026/hybrid"
     }
 
     # Check which adapters actually exist to prevent PEFT crashes
@@ -290,15 +290,15 @@ def debug_inference_manager():
     manager = InferenceManager(base_model_id=model_id, adapter_paths=valid_adapters)
     
     # 2. Test standard base model query routing
-    test_query = "What is 5+5 ?"
-    print(f"2. Executing text generation under 'general' domain rule...")
+    test_query = "write a python script that calculates sum of intergers from 1 to 10"
+    print(f"2. Executing text generation")
     print(f"Input query: {test_query!r}\n")
     
     try:
         # Utilizing max_new_tokens to prevent prolonged generation during local diagnostic loop
         response = manager.generate(
             user_prompt=test_query,
-            domain="math",
+            domain="hybrid",
             stream=True,
             # max_new_tokens=200
         )
