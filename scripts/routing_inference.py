@@ -27,7 +27,7 @@ from transformers import StoppingCriteria, StoppingCriteriaList
 # Ensure the root directory is in the path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.router.hybrid_router import HybridRouter
+from src.router.meta_router import MetaRouter
 from src.model_ops.inference_manager import InferenceManager
 
 
@@ -67,13 +67,13 @@ def parse_args():
         type=str,
         default="./models/adapters/adapter_math/math_gsm8k_socratic_8b_instruct_final_22_04_2026",
     )
-    parser.add_argument(
-        "--medical_adapter",
-        type=str,
-        # default="./models/adapters/adapter_medical/old_medical",
-        # default="./models/adapters/adapter_medical/medical_medalpaca_8b_instruct_final_22_04_2026",
-        default="./models/adapters/adapter_medical/medical_icliniq_genmed_10k_8b_instruct_final_23.04.2026",
-    )
+    # parser.add_argument(
+    #     "--medical_adapter",
+    #     type=str,
+    #     # default="./models/adapters/adapter_medical/old_medical",
+    #     # default="./models/adapters/adapter_medical/medical_medalpaca_8b_instruct_final_22_04_2026",
+    #     default="./models/adapters/adapter_medical/medical_icliniq_genmed_10k_8b_instruct_final_23.04.2026",
+    # )
     parser.add_argument(
         "--use_few_shot_prompt",
         action="store_true",
@@ -106,7 +106,7 @@ def main():
     print("\n--- PHASE 1: INITIALIZATION ---")
 
     t0 = time.time()
-    router = HybridRouter()
+    router = MetaRouter()
 
     # Ensure router artifacts exist before trying to load them
     semantic_path = "models/semantic_centroids.npy"
