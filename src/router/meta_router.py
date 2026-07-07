@@ -38,7 +38,6 @@ class MetaRouter:
         sem_probs = self.semantic.predict_proba(prompt)
         syn_probs = self.syntax.predict_proba(prompt)
         
-        # Build deterministic feature space: [sem_math, sem_code, sem_general, syn_math, syn_code, syn_general]
         features = [
             sem_probs.get("math", 0.0),
             sem_probs.get("code", 0.0),
@@ -52,7 +51,6 @@ class MetaRouter:
     def fit(self, domain_data: dict, save_path="models/meta_router.joblib"):
         """
         Trains the meta-gating layer using probability distributions extracted from the sub-routers.
-        domain_data: {"math": [...], "code": [...], "hybrid": [...], "general": [...]}
         """
         X_features = []
         y_labels = []
@@ -76,42 +74,125 @@ class MetaRouter:
         joblib.dump(self.meta_classifier, save_path)
         print(f"Meta-Classifier successfully saved to {save_path}\n")
 
-    def predict(self, prompt: str, verbose: bool = False, log_file=None):
-        """Processes runtime queries and directs routing to: math, code, hybrid, or general."""
-        if not self.is_meta_trained:
-            raise ValueError("Meta-Classifier is not trained or loaded. Call fit() or load() first.")
+    def predict(
+            self, 
+            prompt: str, 
+            verbose: bool = False, 
+            log_file=None, 
+            hybrid_margin: float = 0.15,
+            hybrid_min_confidence: float = 0.50,
+            hybrid_min_existence: float = 0.05
+        ):
+            """Processes runtime queries and directs routing to: math, code, hybrid, or general."""
+            if not self.is_meta_trained:
+                raise ValueError("Meta-Classifier is not trained or loaded. Call fit() or load() first.")
 
-        # 1. Extract feature array
-        X_vec = self._extract_features(prompt)
+            # 1. Base probabilities
+            sem_probs = self.semantic.predict_proba(prompt)
+            syn_probs = self.syntax.predict_proba(prompt)
+            
+            X_vec = np.array([[
+                sem_probs.get("math", 0.0),
+                sem_probs.get("code", 0.0),
+                sem_probs.get("general", 0.0),
+                syn_probs.get("math", 0.0),
+                syn_probs.get("code", 0.0),
+                syn_probs.get("general", 0.0)
+            ]])
 
-        # 2. Compute prediction metrics
-        probabilities = self.meta_classifier.predict_proba(X_vec)[0]
-        classes = self.meta_classifier.classes_
-        
-        best_idx = np.argmax(probabilities)
-        decision = classes[best_idx]
-        confidence = probabilities[best_idx]
-        
-        rule = f"Meta-Classifier Boundary Selection (Confidence: {confidence:.2%})"
+            # 2. Compute Meta-Classifier predictions
+            probabilities = self.meta_classifier.predict_proba(X_vec)[0]
+            classes = self.meta_classifier.classes_
+            
+            sorted_indices = np.argsort(probabilities)[::-1]
+            best_idx = sorted_indices[0]
+            fallback_idx = sorted_indices[1]
+            
+            decision = classes[best_idx]
+            confidence = probabilities[best_idx]
+            
+            fallback_decision = classes[fallback_idx]
+            fallback_confidence = probabilities[fallback_idx]
 
-        # 3. Format detailed log output to preserve pipeline compatibility
-        clean_prompt = prompt.replace("\n", " ")
-        display_prompt = clean_prompt if len(clean_prompt) < 80 else clean_prompt[:77] + "..."
+            rule = f"Meta-Classifier Boundary Selection (Confidence: {confidence:.2%})"
 
-        log_output = (
-            f"[PROMPT] {display_prompt}\n"
-            f"  -> META DISTRIBUTION:\n"
-            + "".join([f"     - {classes[i]:<8}: {probabilities[i]:.4f}\n" for i in range(len(classes))]) +
-            f"  -> ACTION: Routed to {decision.upper()} via {rule}\n"
-        )
+            # --- 3. HYBRID STRICTNESS GUARDRAILS ---
+            if decision == "hybrid":
+                delta = confidence - fallback_confidence
+                
+                math_missing = syn_probs.get("math", 0.0) < 0.01
+                code_missing = syn_probs.get("code", 0.0) < hybrid_min_existence
+                
+                # Temporary variables to test the guardrails before committing
+                proposed_decision = decision
+                proposed_rule = rule
+                
+                # Guard A: The "Missing Ingredient" Veto
+                if math_missing or code_missing:
+                    # Find the highest predicted class that is NOT hybrid and NOT the missing ingredient
+                    for idx in sorted_indices:
+                        candidate = classes[idx]
+                        if candidate == "hybrid":
+                            continue
+                        if candidate == "math" and math_missing:
+                            continue
+                        if candidate == "code" and code_missing:
+                            continue
+                        
+                        proposed_decision = candidate
+                        if math_missing and not code_missing:
+                            proposed_rule = f"Missing Ingredient Veto (Math Syntax {syn_probs.get('math', 0.0):.4f} < 0.01) -> Fallback to {candidate.upper()}"
+                        elif code_missing and not math_missing:
+                            proposed_rule = f"Missing Ingredient Veto (Code Syntax {syn_probs.get('code', 0.0):.4f} < {hybrid_min_existence}) -> Fallback to {candidate.upper()}"
+                        else:
+                            proposed_rule = f"Missing Ingredient Veto (Math & Code Syntax Missing) -> Fallback to {candidate.upper()}"
+                        break
+                        
+                # Guard B: The Confidence Floor (No guessing allowed)
+                elif confidence < hybrid_min_confidence:
+                    proposed_decision = fallback_decision
+                    proposed_rule = (
+                        f"Hybrid Weak Confidence ({confidence:.1%} < {hybrid_min_confidence:.0%}) "
+                        f"-> Fallback to {fallback_decision.upper()}"
+                    )
+                
+                # Guard C: The Delta Margin (No toss-ups allowed)
+                elif delta < hybrid_margin:
+                    proposed_decision = fallback_decision
+                    proposed_rule = (
+                        f"Hybrid Margin Downgrade (Delta {delta:.3f} < {hybrid_margin}) "
+                        f"-> Fallback to {fallback_decision.upper()}"
+                    )
 
-        if verbose:
-            print(f"\n{log_output}", end="")
+                # --- THE "GENERAL" FALLBACK ABORT ---
+                # If the strictness guardrails forced the prompt all the way down to GENERAL,
+                # it means the syntax router was completely blind to technical keywords.
+                # In this case, we abort the vetoes and trust the Random Forest's top prediction.
+                if proposed_decision == "general":
+                    decision = classes[best_idx]
+                    rule = f"Guardrail Abort (Prevented drop to GENERAL) -> Reverted to {decision.upper()} (Confidence: {confidence:.2%})"
+                else:
+                    decision = proposed_decision
+                    rule = proposed_rule
 
-        if log_file:
-            final_path = log_file if isinstance(log_file, str) else "logs/meta_router_logs.txt"
-            os.makedirs(os.path.dirname(final_path), exist_ok=True)
-            with open(final_path, "a", encoding="utf-8") as f:
-                f.write(f"\n{log_output}")
+            # 4. Format detailed log output
+            clean_prompt = prompt.replace("\n", " ")
+            display_prompt = clean_prompt if len(clean_prompt) < 80 else clean_prompt[:77] + "..."
 
-        return decision, rule, log_output
+            log_output = (
+                f"[PROMPT] {display_prompt}\n"
+                f"  -> META DISTRIBUTION:\n"
+                + "".join([f"     - {classes[i]:<8}: {probabilities[i]:.4f}\n" for i in range(len(classes))]) +
+                f"  -> ACTION: Routed to {decision.upper()} via {rule}\n"
+            )
+
+            if verbose:
+                print(f"\n{log_output}", end="")
+
+            if log_file:
+                final_path = log_file if isinstance(log_file, str) else "logs/meta_router_logs.txt"
+                os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                with open(final_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n{log_output}")
+
+            return decision, rule, log_output
