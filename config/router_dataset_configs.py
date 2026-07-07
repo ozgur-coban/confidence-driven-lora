@@ -1,7 +1,7 @@
 ROUTER_DATASET_CONFIGS = {
     "local_paths": {
         "squad": "data/filtered/clean_squad.json",
-        "ultra": "data/filtered/clean_ultrachat.json",
+        "ultrachat": "data/filtered/clean_ultrachat.json",
     },
     "domain_rules": {
         "math": {
@@ -15,7 +15,7 @@ ROUTER_DATASET_CONFIGS = {
             "path": "m-a-p/CodeFeedback-Filtered-Instruction",
             "name": None,
             "train_split": "train",
-            "test_split": "test",  # Or 'validation' depending on the repo
+            "test_split": "test",
             "column": "query",
         },
         "medical": {
@@ -24,6 +24,13 @@ ROUTER_DATASET_CONFIGS = {
             "train_split": "train",
             "test_split": "test",
             "column": "question",
+        },
+        "hybrid": {
+            "path": "ozgur-coban/code_math_hybrid_300",  # Works for 100 or 500 once updated
+            "name": None,
+            "train_split": "train",
+            "test_split": "train",  # Fallback to train since you won't have a specific test split uploaded
+            "column": "query",
         },
         "general": {
             "path": "rajpurkar/squad_v2",

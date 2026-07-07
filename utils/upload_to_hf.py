@@ -17,11 +17,11 @@ else:
 print("Loading local JSON...")
 dataset = load_dataset(
     "json",
-    data_files="./data/train/medical/preprocessed/icliniq_genmed_combined.json",
+    data_files="./data/code_math_mixed_dataset/code_math_hybrid_basic_300.json",
     split="train",
 )
 
-repo_id = "ozgur-coban/medical-lora-10k"
+repo_id = "ozgur-coban/code_math_hybrid_300"
 
 print(f"Pushing to {repo_id}...")
 # Setting private=True
