@@ -4,6 +4,7 @@ import time
 import json
 import argparse
 import numpy as np
+from datasets import load_dataset
 from sklearn.metrics import confusion_matrix, classification_report
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -13,11 +14,11 @@ from src.router.meta_router import MetaRouter
 from config.router_dataset_configs import ROUTER_DATASET_CONFIGS
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train and/or Evaluate Meta Router.")
+    parser = argparse.ArgumentParser(description="Train and Evaluate Meta Router with Verbose Diagnostics.")
     parser.add_argument(
         "--enable_training",
         action="store_true",
-        help="If flag is passed, fits a new meta-classifier and saves it. Otherwise, loads from disk.",
+        help="Fits a new meta-classifier and saves it. Otherwise loads from disk.",
     )
     parser.add_argument(
         "--specialist_samples",
@@ -31,21 +32,68 @@ def parse_args():
         default=60,
         help="Number of unseen holdout samples to evaluate.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print raw feature vectors and prediction distributions for every evaluated prompt.",
+    )
     return parser.parse_args()
+
+def load_combined_hybrid_data(hybrid_cfg, sample_count, is_test=False):
+    """Combines Hugging Face hybrid dataset with local GSM8K synthetic hybrid dataset."""
+    prompts = []
+    
+    # 1. Load HF Hybrid Dataset (300 samples)
+    try:
+        split = hybrid_cfg["test_split"] if is_test else hybrid_cfg["train_split"]
+        hf_ds = load_dataset(hybrid_cfg["path"], split=split)
+        col = hybrid_cfg["column"]
+        hf_prompts = [row[col] for row in hf_ds if row.get(col)]
+        prompts.extend(hf_prompts)
+        print(f" -> Loaded {len(hf_prompts)} hybrid samples from HF '{hybrid_cfg['path']}'")
+    except Exception as e:
+        print(f" -> Warning: Failed to load HF hybrid dataset: {e}")
+
+    # 2. Load Local Synthetic GSM8K Hybrid Dataset (~1050 samples)
+    local_key = "local_test" if is_test else "local_train"
+    local_path = hybrid_cfg.get(local_key)
+    if local_path and os.path.exists(local_path):
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                local_prompts = json.load(f)
+                prompts.extend(local_prompts)
+                print(f" -> Loaded {len(local_prompts)} hybrid samples from local file '{local_path}'")
+        except Exception as e:
+            print(f" -> Warning: Failed to load local hybrid file '{local_path}': {e}")
+            
+    if not prompts:
+        raise ValueError("No hybrid data could be loaded. Check file paths and network connection.")
+
+    # Shuffle and trim to target sample_count
+    np.random.seed(42)
+    np.random.shuffle(prompts)
+    
+    if len(prompts) < sample_count:
+        print(f" -> Warning: Requested {sample_count} samples, but only have {len(prompts)} total. Using all available.")
+        return prompts
+        
+    return prompts[:sample_count]
 
 def main():
     args = parse_args()
 
-    # 1. Initialize the unified Dataset Manager
     local_paths = ROUTER_DATASET_CONFIGS.get("local_paths")
-    domain_rules = ROUTER_DATASET_CONFIGS.get("domain_rules")
+    # Make a copy so we don't mutate the original dictionary
+    domain_rules = ROUTER_DATASET_CONFIGS.get("domain_rules").copy() 
+    
     if "medical" in domain_rules:
         del domain_rules["medical"]
 
-    data_manager = DatasetManager(
-        local_paths=local_paths, domain_configs=domain_rules
-    )
+    # --- THE FIX: Extract hybrid configuration and remove it from DatasetManager's queue ---
+    hybrid_cfg = domain_rules.pop("hybrid")
 
+    # DatasetManager will now ONLY load math, code, and general
+    data_manager = DatasetManager(local_paths=local_paths, domain_configs=domain_rules)
     router = MetaRouter()
 
     # ==========================================
@@ -54,7 +102,6 @@ def main():
     if args.enable_training:
         print(f"\n1. Fetching Training Data ({args.specialist_samples} samples per domain)...")
         
-        # Pull balanced datasets
         training_data = data_manager.get_training_data(
             specialist_samples=args.specialist_samples,
             general_samples=0,
@@ -62,12 +109,16 @@ def main():
             ultra_samples=int(args.specialist_samples / 2),
         )
 
+        # Manually load the combined hybrid data
+        training_data["hybrid"] = load_combined_hybrid_data(
+            hybrid_cfg, sample_count=args.specialist_samples, is_test=False
+        )
+
         print("\n2. Initializing and Fitting Meta Router...")
-        # Load the base sub-routers first so they can extract features
         router.load(
             semantic_path="models/semantic_centroids.npy",
             syntax_path="models/syntax_router.joblib",
-            meta_path="models/meta_router.joblib" # Will safely warn it doesn't exist yet
+            meta_path="models/meta_router.joblib"
         )
         
         start_time = time.time()
@@ -86,13 +137,17 @@ def main():
     # PHASE 2: ACCURACY & ERROR ANALYSIS
     # ==========================================
     print("\n" + "=" * 70)
-    print("3. ACCURACY & ERROR ANALYSIS (Holdout Set)")
+    print("3. ACCURACY & ERROR ANALYSIS (Combined Holdout Set)")
     print("=" * 70)
 
-    # Fetch holdout data by offsetting the start index by the number of training samples
     test_data = data_manager.get_testing_data(
         test_samples=args.test_samples, 
         specialist_offset=args.specialist_samples
+    )
+
+    # Manually load the combined hybrid test data
+    test_data["hybrid"] = load_combined_hybrid_data(
+        hybrid_cfg, sample_count=args.test_samples, is_test=True
     )
 
     domain_labels = ["math", "code", "hybrid", "general"]
@@ -104,20 +159,25 @@ def main():
     total_correct = 0
     total_samples = 0
 
-    for true_domain, prompts in test_data.items():
-        if true_domain not in domain_labels:
+    for true_domain in domain_labels:
+        prompts = test_data.get(true_domain, [])
+        if not prompts:
             continue
 
-        print(f"--- Testing {true_domain.upper()} Prompts ---")
+        print(f"\n--- Testing {true_domain.upper()} Prompts ({len(prompts)} samples) ---")
         correct = 0
         rule_triggers = {}
         
         start_time = time.time()
         
         for prompt in prompts:
-            # Pass verbose=False and log_file=None to keep terminal clean during calculation
             final_decision, logic_rule, detailed_log = router.predict(
-                prompt, verbose=False, log_file=None
+                prompt, 
+                verbose=args.verbose, 
+                log_file="logs/meta_router_eval_run.log",
+                hybrid_margin=0.05,             # Changed from 0.15
+                hybrid_min_confidence=0.38,     # Changed from 0.50
+                hybrid_min_existence=0.01       # Changed from 0.05
             )
 
             all_y_true.append(true_domain)
@@ -142,7 +202,6 @@ def main():
         total_correct += correct
         total_samples += len(prompts)
 
-        # Print domain-specific profiling metrics
         print(f"  -> Accuracy: {accuracy:>5.1f}%")
         print(f"  -> Speed:    {len(prompts) / elapsed if elapsed > 0 else 0:.1f} prompts/sec")
         print(f"  -> Handled by:")
@@ -164,8 +223,7 @@ def main():
     print("=" * 70)
     cm = confusion_matrix(all_y_true, all_y_pred, labels=domain_labels)
 
-    # Highly scannable confusion matrix mapping
-    dummy_title="'True \ Pred':>15"
+    dummy_title = f"{'True || Pred':>15}"
     header = f"{dummy_title} |" + "".join([f"{label:>10}" for label in domain_labels])
     print(header)
     print("-" * len(header))

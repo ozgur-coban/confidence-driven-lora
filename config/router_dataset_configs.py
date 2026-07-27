@@ -2,6 +2,8 @@ ROUTER_DATASET_CONFIGS = {
     "local_paths": {
         "squad": "data/filtered/clean_squad.json",
         "ultrachat": "data/filtered/clean_ultrachat.json",
+        "hybrid_train_local": "./data/gsm8k_hybrid_train.json",
+        "hybrid_test_local": "./data/gsm8k_hybrid_test.json",
     },
     "domain_rules": {
         "math": {
@@ -18,19 +20,14 @@ ROUTER_DATASET_CONFIGS = {
             "test_split": "test",
             "column": "query",
         },
-        "medical": {
-            "path": "GBaker/MedQA-USMLE-4-options",
-            "name": None,
-            "train_split": "train",
-            "test_split": "test",
-            "column": "question",
-        },
         "hybrid": {
-            "path": "ozgur-coban/code_math_hybrid_300",  # Works for 100 or 500 once updated
+            "path": "ozgur-coban/code_math_hybrid_300",
             "name": None,
             "train_split": "train",
-            "test_split": "train",  # Fallback to train since you won't have a specific test split uploaded
+            "test_split": "train",
             "column": "query",
+            "local_train": "./data/gsm8k_hybrid_train.json",
+            "local_test": "./data/gsm8k_hybrid_test.json",
         },
         "general": {
             "path": "rajpurkar/squad_v2",

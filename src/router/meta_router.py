@@ -6,10 +6,17 @@ from src.router.semantic_router import SemanticRouter
 from src.router.syntax_router import SyntaxRouter
 
 class MetaRouter:
+    FEATURE_NAMES = [
+        "sem_math", "sem_code", "sem_general",
+        "syn_math", "syn_code", "syn_general"
+    ]
+
     def __init__(self):
         self.semantic = SemanticRouter()
         self.syntax = SyntaxRouter()
-        self.meta_classifier = RandomForestClassifier(n_estimators=100,max_depth=4,class_weight="balanced",random_state=42)
+        self.meta_classifier = RandomForestClassifier(
+            n_estimators=100, max_depth=4, class_weight="balanced", random_state=42
+        )
         self.is_meta_trained = False
 
     def load(
@@ -49,9 +56,7 @@ class MetaRouter:
         return np.array([features])
 
     def fit(self, domain_data: dict, save_path="models/meta_router.joblib"):
-        """
-        Trains the meta-gating layer using probability distributions extracted from the sub-routers.
-        """
+        """Trains the meta-gating layer and outputs feature importance analysis."""
         X_features = []
         y_labels = []
 
@@ -66,9 +71,19 @@ class MetaRouter:
         X = np.array(X_features)
         y = np.array(y_labels)
 
-        print(f"Training Meta-Classifier on matrix shape {X.shape} (Softmax Optimization)...")
+        print(f"Training Meta-Classifier on matrix shape {X.shape}...")
         self.meta_classifier.fit(X, y)
         self.is_meta_trained = True
+
+        # --- DIAGNOSTIC: FEATURE IMPORTANCE PRINT ---
+        print("\n" + "=" * 50)
+        print("RANDOM FOREST FEATURE IMPORTANCES")
+        print("=" * 50)
+        importances = self.meta_classifier.feature_importances_
+        sorted_indices = np.argsort(importances)[::-1]
+        for idx in sorted_indices:
+            print(f" - {self.FEATURE_NAMES[idx]:<12}: {importances[idx]:.4f} ({importances[idx]*100:.1f}%)")
+        print("=" * 50 + "\n")
 
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         joblib.dump(self.meta_classifier, save_path)
@@ -83,7 +98,6 @@ class MetaRouter:
             hybrid_min_confidence: float = 0.50,
             hybrid_min_existence: float = 0.05
         ):
-            """Processes runtime queries and directs routing to: math, code, hybrid, or general."""
             if not self.is_meta_trained:
                 raise ValueError("Meta-Classifier is not trained or loaded. Call fit() or load() first.")
 
@@ -123,13 +137,10 @@ class MetaRouter:
                 math_missing = syn_probs.get("math", 0.0) < 0.01
                 code_missing = syn_probs.get("code", 0.0) < hybrid_min_existence
                 
-                # Temporary variables to test the guardrails before committing
                 proposed_decision = decision
                 proposed_rule = rule
                 
-                # Guard A: The "Missing Ingredient" Veto
                 if math_missing or code_missing:
-                    # Find the highest predicted class that is NOT hybrid and NOT the missing ingredient
                     for idx in sorted_indices:
                         candidate = classes[idx]
                         if candidate == "hybrid":
@@ -148,7 +159,6 @@ class MetaRouter:
                             proposed_rule = f"Missing Ingredient Veto (Math & Code Syntax Missing) -> Fallback to {candidate.upper()}"
                         break
                         
-                # Guard B: The Confidence Floor (No guessing allowed)
                 elif confidence < hybrid_min_confidence:
                     proposed_decision = fallback_decision
                     proposed_rule = (
@@ -156,7 +166,6 @@ class MetaRouter:
                         f"-> Fallback to {fallback_decision.upper()}"
                     )
                 
-                # Guard C: The Delta Margin (No toss-ups allowed)
                 elif delta < hybrid_margin:
                     proposed_decision = fallback_decision
                     proposed_rule = (
@@ -164,10 +173,6 @@ class MetaRouter:
                         f"-> Fallback to {fallback_decision.upper()}"
                     )
 
-                # --- THE "GENERAL" FALLBACK ABORT ---
-                # If the strictness guardrails forced the prompt all the way down to GENERAL,
-                # it means the syntax router was completely blind to technical keywords.
-                # In this case, we abort the vetoes and trust the Random Forest's top prediction.
                 if proposed_decision == "general":
                     decision = classes[best_idx]
                     rule = f"Guardrail Abort (Prevented drop to GENERAL) -> Reverted to {decision.upper()} (Confidence: {confidence:.2%})"
@@ -175,12 +180,15 @@ class MetaRouter:
                     decision = proposed_decision
                     rule = proposed_rule
 
-            # 4. Format detailed log output
+            # 4. Format detailed log output (includes raw feature vector)
             clean_prompt = prompt.replace("\n", " ")
             display_prompt = clean_prompt if len(clean_prompt) < 80 else clean_prompt[:77] + "..."
 
             log_output = (
                 f"[PROMPT] {display_prompt}\n"
+                f"  -> INPUT VECTOR (6D): "
+                f"[SemMath: {X_vec[0][0]:.3f}, SemCode: {X_vec[0][1]:.3f}, SemGen: {X_vec[0][2]:.3f} | "
+                f"SynMath: {X_vec[0][3]:.3f}, SynCode: {X_vec[0][4]:.3f}, SynGen: {X_vec[0][5]:.3f}]\n"
                 f"  -> META DISTRIBUTION:\n"
                 + "".join([f"     - {classes[i]:<8}: {probabilities[i]:.4f}\n" for i in range(len(classes))]) +
                 f"  -> ACTION: Routed to {decision.upper()} via {rule}\n"
