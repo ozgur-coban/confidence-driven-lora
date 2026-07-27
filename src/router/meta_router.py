@@ -134,7 +134,7 @@ class MetaRouter:
             if decision == "hybrid":
                 delta = confidence - fallback_confidence
                 
-                math_missing = syn_probs.get("math", 0.0) < 0.01
+                math_missing = syn_probs.get("math", 0.0) < 0.001
                 code_missing = syn_probs.get("code", 0.0) < hybrid_min_existence
                 
                 proposed_decision = decision
