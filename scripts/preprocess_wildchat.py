@@ -1,4 +1,5 @@
 import json
+from config.dataset_configs import all_yes_ids
 
 def preprocess_wildchat_jsonl(input_path, output_path):
     dropped_explicitly_non_english = 0
@@ -194,22 +195,39 @@ def save_for_gemini(prompts, output_path):
             outfile.write(f"[{idx}] {clean_prompt}\n")
             
     print(f"Saved {len(prompts)} formatted prompts to '{output_path}'.")
+def stitch_hybrid_dataset(input_txt_path, output_json_path, valid_ids):
+    final_dataset = []
 
+    with open(input_txt_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if not line.strip():
+                continue
+            
+            # Extract the ID from the string (e.g., from "[12] write code...")
+            try:
+                line_id = int(line.split(']')[0].replace('[', ''))
+            except ValueError:
+                continue  # Skip if formatting is broken
+            
+            if line_id in valid_ids:
+                # Extract the actual prompt text, splitting only on the first ']'
+                prompt_text = line.split(']', 1)[1].strip()
+                final_dataset.append(prompt_text)
+
+    # Save the final dataset
+    with open(output_json_path, 'w', encoding='utf-8') as f:
+        json.dump(final_dataset, f, indent=4)
+
+    print("Successfully stitched hybrid dataset!")
+    print(f"Total verified hybrid prompts kept: {len(final_dataset)}")
+    print(f"Saved to: {output_json_path}")
 
 if __name__ == "__main__":
     # 1. Extract and save the raw prompts + metadata to a JSON file
-    raw_prompts = extract_prompts_from_cleaned_jsonl(
-        input_path="./data/wildchat/wildchat_math_cleaned.jsonl", 
-        output_path="./data/wildchat/wildchat_extracted_raw_prompts_cleanjunk.jsonl"
-    )
-    
-    # 2. Deduplicate the raw prompts
-    unique_prompts = deduplicate_prompts(raw_prompts)
-    sized_prompts = filter_length_outliers(unique_prompts, top_percent_to_cut=5)
-    
-    # 3. Save the final formatted text file for the Gemini Web UI
-    save_for_gemini(
-        prompts=sized_prompts, 
-        output_path="./data/wildchat/prompts_for_gemini.txt"
+
+    stitch_hybrid_dataset(
+        input_txt_path='./data/wildchat/prompts_for_gemini.txt',
+        output_json_path='./data/wildchat/hybrid_wildchat_from_gemini.json',
+        valid_ids=set(all_yes_ids)
     )
     pass
