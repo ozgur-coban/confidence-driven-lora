@@ -6,10 +6,17 @@ from src.router.semantic_router import SemanticRouter
 from src.router.syntax_router import SyntaxRouter
 
 class MetaRouter:
+    FEATURE_NAMES = [
+        "sem_math", "sem_code", "sem_general",
+        "syn_math", "syn_code", "syn_general"
+    ]
+
     def __init__(self):
         self.semantic = SemanticRouter()
         self.syntax = SyntaxRouter()
-        self.meta_classifier = RandomForestClassifier(n_estimators=100,max_depth=4,class_weight="balanced",random_state=42)
+        self.meta_classifier = RandomForestClassifier(
+            n_estimators=100, max_depth=4, class_weight="balanced", random_state=42
+        )
         self.is_meta_trained = False
 
     def load(
@@ -49,9 +56,7 @@ class MetaRouter:
         return np.array([features])
 
     def fit(self, domain_data: dict, save_path="models/meta_router.joblib"):
-        """
-        Trains the meta-gating layer using probability distributions extracted from the sub-routers.
-        """
+        """Trains the meta-gating layer and outputs feature importance analysis."""
         X_features = []
         y_labels = []
 
@@ -66,9 +71,19 @@ class MetaRouter:
         X = np.array(X_features)
         y = np.array(y_labels)
 
-        print(f"Training Meta-Classifier on matrix shape {X.shape} (Softmax Optimization)...")
+        print(f"Training Meta-Classifier on matrix shape {X.shape}...")
         self.meta_classifier.fit(X, y)
         self.is_meta_trained = True
+
+        # --- DIAGNOSTIC: FEATURE IMPORTANCE PRINT ---
+        print("\n" + "=" * 50)
+        print("RANDOM FOREST FEATURE IMPORTANCES")
+        print("=" * 50)
+        importances = self.meta_classifier.feature_importances_
+        sorted_indices = np.argsort(importances)[::-1]
+        for idx in sorted_indices:
+            print(f" - {self.FEATURE_NAMES[idx]:<12}: {importances[idx]:.4f} ({importances[idx]*100:.1f}%)")
+        print("=" * 50 + "\n")
 
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         joblib.dump(self.meta_classifier, save_path)
@@ -78,29 +93,28 @@ class MetaRouter:
             self, 
             prompt: str, 
             verbose: bool = False, 
-            log_file=None, 
-            hybrid_margin: float = 0.15,
-            hybrid_min_confidence: float = 0.50,
-            hybrid_min_existence: float = 0.05
+            log_file=None,
+            hybrid_margin: float = 0.0,         # Dropped to 0 (Trust the RF's margin)
+            hybrid_min_confidence: float = 0.30,
+            hybrid_min_existence: float = 0.0   # Dropped to 0 (Stop vetoing equations)
         ):
-            """Processes runtime queries and directs routing to: math, code, hybrid, or general."""
             if not self.is_meta_trained:
                 raise ValueError("Meta-Classifier is not trained or loaded. Call fit() or load() first.")
 
-            # 1. Base probabilities
             sem_probs = self.semantic.predict_proba(prompt)
             syn_probs = self.syntax.predict_proba(prompt)
             
+            sem_math = sem_probs.get("math", 0.0)
+            sem_code = sem_probs.get("code", 0.0)
+            sem_gen  = sem_probs.get("general", 0.0)
+            
             X_vec = np.array([[
-                sem_probs.get("math", 0.0),
-                sem_probs.get("code", 0.0),
-                sem_probs.get("general", 0.0),
+                sem_math, sem_code, sem_gen,
                 syn_probs.get("math", 0.0),
                 syn_probs.get("code", 0.0),
                 syn_probs.get("general", 0.0)
             ]])
 
-            # 2. Compute Meta-Classifier predictions
             probabilities = self.meta_classifier.predict_proba(X_vec)[0]
             classes = self.meta_classifier.classes_
             
@@ -116,64 +130,21 @@ class MetaRouter:
 
             rule = f"Meta-Classifier Boundary Selection (Confidence: {confidence:.2%})"
 
-            # --- 3. HYBRID STRICTNESS GUARDRAILS ---
-            if decision == "hybrid":
-                delta = confidence - fallback_confidence
+            # ==========================================
+            # 3. ANTI-HALLUCINATION GUARDRAILS
+            # ==========================================
+            
+            # Guard A: The General Syntax Hallucination Check
+            # If the RF chooses General purely based on syntax, but the semantic engine 
+            # recognizes dense technical content (SemGen < 0.28), override to the fallback.
+            if decision == "general" and sem_gen < 0.28:
+                decision = fallback_decision
+                rule = f"Semantic Veto of GENERAL (SemGen {sem_gen:.3f} < 0.28) -> Fallback to {decision.upper()}"
                 
-                math_missing = syn_probs.get("math", 0.0) < 0.01
-                code_missing = syn_probs.get("code", 0.0) < hybrid_min_existence
-                
-                # Temporary variables to test the guardrails before committing
-                proposed_decision = decision
-                proposed_rule = rule
-                
-                # Guard A: The "Missing Ingredient" Veto
-                if math_missing or code_missing:
-                    # Find the highest predicted class that is NOT hybrid and NOT the missing ingredient
-                    for idx in sorted_indices:
-                        candidate = classes[idx]
-                        if candidate == "hybrid":
-                            continue
-                        if candidate == "math" and math_missing:
-                            continue
-                        if candidate == "code" and code_missing:
-                            continue
-                        
-                        proposed_decision = candidate
-                        if math_missing and not code_missing:
-                            proposed_rule = f"Missing Ingredient Veto (Math Syntax {syn_probs.get('math', 0.0):.4f} < 0.01) -> Fallback to {candidate.upper()}"
-                        elif code_missing and not math_missing:
-                            proposed_rule = f"Missing Ingredient Veto (Code Syntax {syn_probs.get('code', 0.0):.4f} < {hybrid_min_existence}) -> Fallback to {candidate.upper()}"
-                        else:
-                            proposed_rule = f"Missing Ingredient Veto (Math & Code Syntax Missing) -> Fallback to {candidate.upper()}"
-                        break
-                        
-                # Guard B: The Confidence Floor (No guessing allowed)
-                elif confidence < hybrid_min_confidence:
-                    proposed_decision = fallback_decision
-                    proposed_rule = (
-                        f"Hybrid Weak Confidence ({confidence:.1%} < {hybrid_min_confidence:.0%}) "
-                        f"-> Fallback to {fallback_decision.upper()}"
-                    )
-                
-                # Guard C: The Delta Margin (No toss-ups allowed)
-                elif delta < hybrid_margin:
-                    proposed_decision = fallback_decision
-                    proposed_rule = (
-                        f"Hybrid Margin Downgrade (Delta {delta:.3f} < {hybrid_margin}) "
-                        f"-> Fallback to {fallback_decision.upper()}"
-                    )
-
-                # --- THE "GENERAL" FALLBACK ABORT ---
-                # If the strictness guardrails forced the prompt all the way down to GENERAL,
-                # it means the syntax router was completely blind to technical keywords.
-                # In this case, we abort the vetoes and trust the Random Forest's top prediction.
-                if proposed_decision == "general":
-                    decision = classes[best_idx]
-                    rule = f"Guardrail Abort (Prevented drop to GENERAL) -> Reverted to {decision.upper()} (Confidence: {confidence:.2%})"
-                else:
-                    decision = proposed_decision
-                    rule = proposed_rule
+            # Guard B: Base Hybrid Weak Confidence
+            elif decision == "hybrid" and confidence < hybrid_min_confidence:
+                decision = fallback_decision
+                rule = f"Hybrid Weak Confidence ({confidence:.1%} < {hybrid_min_confidence:.0%}) -> Fallback to {decision.upper()}"
 
             # 4. Format detailed log output
             clean_prompt = prompt.replace("\n", " ")
@@ -181,6 +152,9 @@ class MetaRouter:
 
             log_output = (
                 f"[PROMPT] {display_prompt}\n"
+                f"  -> INPUT VECTOR (6D): "
+                f"[SemMath: {X_vec[0][0]:.3f}, SemCode: {X_vec[0][1]:.3f}, SemGen: {X_vec[0][2]:.3f} | "
+                f"SynMath: {X_vec[0][3]:.3f}, SynCode: {X_vec[0][4]:.3f}, SynGen: {X_vec[0][5]:.3f}]\n"
                 f"  -> META DISTRIBUTION:\n"
                 + "".join([f"     - {classes[i]:<8}: {probabilities[i]:.4f}\n" for i in range(len(classes))]) +
                 f"  -> ACTION: Routed to {decision.upper()} via {rule}\n"
