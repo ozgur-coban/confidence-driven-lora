@@ -171,7 +171,7 @@ def main():
         start_time = time.time()
         
         for prompt in prompts:
-            final_decision, logic_rule, detailed_log = router.predict(
+            final_decision, logic_rule, detailed_log,_ = router.predict(
                 prompt, 
                 verbose=args.verbose, 
                 log_file="logs/meta_router_eval_run.log",

@@ -1,5 +1,6 @@
 import torch
-from typing import Union, Dict, Optional
+from typing import Union, dict, Optional
+import time # Ensure time is imported
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -16,7 +17,7 @@ class InferenceManager:
     def __init__(
         self,
         base_model_id: str = "meta-llama/Llama-3.2-3B",
-        adapter_paths: Optional[Dict[str, str]] = None,
+        adapter_paths: Optional[dict[str, str]] = None,
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.registry = DOMAIN_REGISTRY
@@ -63,7 +64,7 @@ class InferenceManager:
         stream: bool = True,
         bypass_lora: bool = False,
         **kwargs,
-    ) -> str:
+    ):
         
         if domain not in self.registry:
             domain = "general"
@@ -79,12 +80,18 @@ class InferenceManager:
             else None
         )
 
+        switch_ms = 0.0
+        t_gen_start = time.perf_counter()
+
         # ---------------------------------------------------------
-        # ROUTING EXECUTION LOGIC
+        # ROUTING EXECUTION & TIMING LOGIC
         # ---------------------------------------------------------
         if bypass_lora or domain == "general" or not self.adapters_loaded:
             if self.adapters_loaded:
+                # Time the disable context entry
+                t0 = time.perf_counter()
                 with self.model.disable_adapter():
+                    switch_ms = (time.perf_counter() - t0) * 1000
                     with torch.no_grad():
                         outputs = self.model.generate(
                             **inputs,
@@ -103,7 +110,11 @@ class InferenceManager:
                         **kwargs,
                     )
         else:
+            # Time the PEFT set_adapter function
+            t0 = time.perf_counter()
             self.model.set_adapter(domain)
+            switch_ms = (time.perf_counter() - t0) * 1000
+            
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
@@ -112,10 +123,21 @@ class InferenceManager:
                     streamer=streamer,
                     **kwargs,
                 )
+                
+        t_gen_end = time.perf_counter()
+        gen_ms = (t_gen_end - t_gen_start) * 1000
 
         input_length = inputs["input_ids"].shape[1]
-        response = self.tokenizer.decode(
-            outputs[0][input_length:], skip_special_tokens=True
-        )
+        generated_tokens = outputs[0][input_length:]
+        num_tokens = len(generated_tokens)
+        
+        response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
-        return response
+        # Return a dictionary with all required paper metrics
+        return {
+            "response": response,
+            "num_tokens": num_tokens,
+            "switch_ms": switch_ms,
+            "generation_ms": gen_ms,
+            "tps": (num_tokens / (gen_ms / 1000)) if gen_ms > 0 else 0.0
+        }

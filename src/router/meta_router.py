@@ -146,6 +146,11 @@ class MetaRouter:
                 decision = fallback_decision
                 rule = f"Hybrid Weak Confidence ({confidence:.1%} < {hybrid_min_confidence:.0%}) -> Fallback to {decision.upper()}"
 
+            # Determine the actual confidence of the final decision
+            final_confidence = confidence
+            if decision == fallback_decision:
+                final_confidence = fallback_confidence
+
             # 4. Format detailed log output
             clean_prompt = prompt.replace("\n", " ")
             display_prompt = clean_prompt if len(clean_prompt) < 80 else clean_prompt[:77] + "..."
@@ -169,4 +174,5 @@ class MetaRouter:
                 with open(final_path, "a", encoding="utf-8") as f:
                     f.write(f"\n{log_output}")
 
-            return decision, rule, log_output
+            # Added final_confidence to the return tuple
+            return decision, rule, log_output, float(final_confidence)
