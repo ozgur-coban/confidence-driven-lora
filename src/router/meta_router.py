@@ -93,28 +93,28 @@ class MetaRouter:
             self, 
             prompt: str, 
             verbose: bool = False, 
-            log_file=None, 
-            hybrid_margin: float = 0.15,
-            hybrid_min_confidence: float = 0.50,
-            hybrid_min_existence: float = 0.05
+            log_file=None,
+            hybrid_margin: float = 0.0,         # Dropped to 0 (Trust the RF's margin)
+            hybrid_min_confidence: float = 0.30,
+            hybrid_min_existence: float = 0.0   # Dropped to 0 (Stop vetoing equations)
         ):
             if not self.is_meta_trained:
                 raise ValueError("Meta-Classifier is not trained or loaded. Call fit() or load() first.")
 
-            # 1. Base probabilities
             sem_probs = self.semantic.predict_proba(prompt)
             syn_probs = self.syntax.predict_proba(prompt)
             
+            sem_math = sem_probs.get("math", 0.0)
+            sem_code = sem_probs.get("code", 0.0)
+            sem_gen  = sem_probs.get("general", 0.0)
+            
             X_vec = np.array([[
-                sem_probs.get("math", 0.0),
-                sem_probs.get("code", 0.0),
-                sem_probs.get("general", 0.0),
+                sem_math, sem_code, sem_gen,
                 syn_probs.get("math", 0.0),
                 syn_probs.get("code", 0.0),
                 syn_probs.get("general", 0.0)
             ]])
 
-            # 2. Compute Meta-Classifier predictions
             probabilities = self.meta_classifier.predict_proba(X_vec)[0]
             classes = self.meta_classifier.classes_
             
@@ -130,57 +130,23 @@ class MetaRouter:
 
             rule = f"Meta-Classifier Boundary Selection (Confidence: {confidence:.2%})"
 
-            # --- 3. HYBRID STRICTNESS GUARDRAILS ---
-            if decision == "hybrid":
-                delta = confidence - fallback_confidence
+            # ==========================================
+            # 3. ANTI-HALLUCINATION GUARDRAILS
+            # ==========================================
+            
+            # Guard A: The General Syntax Hallucination Check
+            # If the RF chooses General purely based on syntax, but the semantic engine 
+            # recognizes dense technical content (SemGen < 0.28), override to the fallback.
+            if decision == "general" and sem_gen < 0.28:
+                decision = fallback_decision
+                rule = f"Semantic Veto of GENERAL (SemGen {sem_gen:.3f} < 0.28) -> Fallback to {decision.upper()}"
                 
-                math_missing = syn_probs.get("math", 0.0) < 0.001
-                code_missing = syn_probs.get("code", 0.0) < hybrid_min_existence
-                
-                proposed_decision = decision
-                proposed_rule = rule
-                
-                if math_missing or code_missing:
-                    for idx in sorted_indices:
-                        candidate = classes[idx]
-                        if candidate == "hybrid":
-                            continue
-                        if candidate == "math" and math_missing:
-                            continue
-                        if candidate == "code" and code_missing:
-                            continue
-                        
-                        proposed_decision = candidate
-                        if math_missing and not code_missing:
-                            proposed_rule = f"Missing Ingredient Veto (Math Syntax {syn_probs.get('math', 0.0):.4f} < 0.01) -> Fallback to {candidate.upper()}"
-                        elif code_missing and not math_missing:
-                            proposed_rule = f"Missing Ingredient Veto (Code Syntax {syn_probs.get('code', 0.0):.4f} < {hybrid_min_existence}) -> Fallback to {candidate.upper()}"
-                        else:
-                            proposed_rule = f"Missing Ingredient Veto (Math & Code Syntax Missing) -> Fallback to {candidate.upper()}"
-                        break
-                        
-                elif confidence < hybrid_min_confidence:
-                    proposed_decision = fallback_decision
-                    proposed_rule = (
-                        f"Hybrid Weak Confidence ({confidence:.1%} < {hybrid_min_confidence:.0%}) "
-                        f"-> Fallback to {fallback_decision.upper()}"
-                    )
-                
-                elif delta < hybrid_margin:
-                    proposed_decision = fallback_decision
-                    proposed_rule = (
-                        f"Hybrid Margin Downgrade (Delta {delta:.3f} < {hybrid_margin}) "
-                        f"-> Fallback to {fallback_decision.upper()}"
-                    )
+            # Guard B: Base Hybrid Weak Confidence
+            elif decision == "hybrid" and confidence < hybrid_min_confidence:
+                decision = fallback_decision
+                rule = f"Hybrid Weak Confidence ({confidence:.1%} < {hybrid_min_confidence:.0%}) -> Fallback to {decision.upper()}"
 
-                if proposed_decision == "general":
-                    decision = classes[best_idx]
-                    rule = f"Guardrail Abort (Prevented drop to GENERAL) -> Reverted to {decision.upper()} (Confidence: {confidence:.2%})"
-                else:
-                    decision = proposed_decision
-                    rule = proposed_rule
-
-            # 4. Format detailed log output (includes raw feature vector)
+            # 4. Format detailed log output
             clean_prompt = prompt.replace("\n", " ")
             display_prompt = clean_prompt if len(clean_prompt) < 80 else clean_prompt[:77] + "..."
 

@@ -177,7 +177,7 @@ def main():
                 log_file="logs/meta_router_eval_run.log",
                 hybrid_margin=0.05,             # Changed from 0.15
                 hybrid_min_confidence=0.38,     # Changed from 0.50
-                hybrid_min_existence=0.01       # Changed from 0.05
+                hybrid_min_existence=0.001       # Changed from 0.05
             )
 
             all_y_true.append(true_domain)
