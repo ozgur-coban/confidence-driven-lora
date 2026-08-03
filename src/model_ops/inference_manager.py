@@ -1,13 +1,15 @@
+import time  # Ensure time is imported
+from typing import Optional, Union, Dict
+
 import torch
-from typing import Union, dict, Optional
-import time # Ensure time is imported
+from peft import PeftModel
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
     TextStreamer,
 )
-from peft import PeftModel
+
 from config.domain_registry import DOMAIN_REGISTRY
 
 
@@ -17,7 +19,7 @@ class InferenceManager:
     def __init__(
         self,
         base_model_id: str = "meta-llama/Llama-3.2-3B",
-        adapter_paths: Optional[dict[str, str]] = None,
+        adapter_paths: Optional[Dict[str, str]] = None,
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.registry = DOMAIN_REGISTRY

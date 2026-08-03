@@ -1,6 +1,8 @@
 import os
+import sys
 import json
 import time
+import shutil
 import argparse
 import pandas as pd
 from tqdm import tqdm
@@ -9,7 +11,7 @@ from huggingface_hub import login
 
 from src.router.meta_router import MetaRouter
 from src.model_ops.inference_manager import InferenceManager
-from src.eval.metrics import evaluate_math, evaluate_code
+from src.eval.metrics import evaluate_math
 
 def load_standardized_json(filepath, max_samples=None):
     if not os.path.exists(filepath):
@@ -45,14 +47,28 @@ def parse_args():
     
     # Execution Modifiers
     parser.add_argument("--num_samples", type=int, default=-1, help="Limit samples per dataset for quick testing.")
-    parser.add_argument("--max_new_tokens", type=int, default=512, help="Max tokens to generate.")
-    parser.add_argument("--out_dir", type=str, default="logs/eval_grid", help="Directory for output JSONs.")
+    # parser.add_argument("--max_new_tokens", type=int, default=512, help="Max tokens to generate.")
+    parser.add_argument("--out_dir", type=str, default="logs/eval_grid", help="Local directory for output JSONs.")
+    
+    # --- GOOGLE DRIVE INTEGRATION ---
+    parser.add_argument("--drive_dir", type=str, default="/content/drive/MyDrive/capstone_eval_logs", 
+                        help="Google Drive path to sync logs to (Only used if running in Colab).")
     
     return parser.parse_args()
 
 def main():
     args = parse_args()
     load_dotenv()
+    
+    # --- DETECT COLAB & MOUNT DRIVE ---
+    IN_COLAB = 'google.colab' in sys.modules
+    if IN_COLAB:
+        print("\n[!] Google Colab Environment Detected. Mounting Google Drive...")
+        from google.colab import drive
+        drive.mount('/content/drive')
+        os.makedirs(args.drive_dir, exist_ok=True)
+        print(f" -> Drive mounted. Logs will be synced to: {args.drive_dir}\n")
+
     if os.getenv("HF_TOKEN"):
         login(token=os.getenv("HF_TOKEN"))
 
@@ -83,11 +99,11 @@ def main():
 
     # 2. File Map (Adjust these to match your actual standardized file names)
     dataset_files = {
-        "gsm8k": "data/test/formatted_gsm8k.json",
-        "codefeedback": "data/test/formatted_codefeedback.json",
-        "mixed": "data/test/formatted_mixed.json",
-        "hybrid": "data/test/formatted_hybrid.json",
-        "wildchat": "data/test/formatted_wildchat.json"
+        "gsm8k": "data/final_datasets/formatted/formatted_gsm8k.json",
+        "codefeedback": "data/final_datasets/formatted/formatted_codefeedback.json",
+        "mixed": "data/final_datasets/formatted/formatted_mixed.json",
+        "hybrid": "data/final_datasets/formatted/formatted_gsm8k_hybrid_restored.json",
+        "wildchat": "data/final_datasets/formatted/formatted_wildchat_restored.json"
     }
 
     print("\n" + "="*50)
@@ -159,7 +175,7 @@ def main():
                     domain=target_adapter,
                     stream=False,
                     bypass_lora=bypass_lora,
-                    max_new_tokens=args.max_new_tokens
+                    # max_new_tokens=args.max_new_tokens
                 )
                 
                 log_entry["adapter_switch_ms"] = metrics["switch_ms"]
@@ -176,20 +192,27 @@ def main():
                     if expected == "math" or ds_name == "gsm8k":
                         log_entry["execution_correct"] = evaluate_math(metrics["response"], truth)
                     elif expected == "code" or ds_name == "codefeedback":
-                        log_entry["execution_correct"] = evaluate_code(metrics["response"], truth)
+                        # Leave as None for offline LLM-as-a-judge evaluation
+                        log_entry["execution_correct"] = None 
                     elif expected == "hybrid":
-                        # Log both, allowing offline Gemini review for the code portion
-                        math_correct = evaluate_math(metrics["response"], truth)
-                        has_code_format = evaluate_code(metrics["response"], truth)
-                        log_entry["execution_correct"] = bool(math_correct and has_code_format)
+                        # We can evaluate the math portion automatically, but the final
+                        # determination requires offline LLM evaluation of the code.
+                        # Leaving as None so it isn't accidentally counted as a strict False.
+                        log_entry["execution_correct"] = None
 
                 master_log.append(log_entry)
 
-            # Save individual config-dataset combination for safety
+            # Save individual config-dataset combination locally
             out_filename = f"{args.out_dir}/eval_{ds_name}_{config}.json"
             with open(out_filename, "w", encoding="utf-8") as f:
                 json.dump(master_log, f, indent=4)
-            print(f"    Saved -> {out_filename}")
+            print(f"    Saved Locally -> {out_filename}")
+
+            # --- BACKUP TO GOOGLE DRIVE ---
+            if IN_COLAB:
+                drive_filepath = os.path.join(args.drive_dir, f"eval_{ds_name}_{config}.json")
+                shutil.copy2(out_filename, drive_filepath)
+                print(f"    [✔] Synced to Google Drive -> {drive_filepath}")
 
     print("\nAll tasks completed successfully.")
 
