@@ -28,6 +28,12 @@ class InferenceManager:
         self.tokenizer.padding_side = "left"  # Required for batch generation
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        # Fix EOS token handling for Llama 3.2
+        eos_tokens = [self.tokenizer.eos_token_id]
+        eot_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
+        if eot_id is not None:
+            eos_tokens.append(eot_id)
+        self.eos_token_id = eos_tokens
 
         # SWAPPED: 4-bit config removed, now using native 16-bit with SDPA acceleration
         dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
@@ -36,7 +42,7 @@ class InferenceManager:
         self.base_model = AutoModelForCausalLM.from_pretrained(
             base_model_id, 
             torch_dtype=dtype,
-            attn_implementation="flash_attention_2",
+            attn_implementation="eager",
             device_map={"": 0}
         )
 
@@ -150,7 +156,6 @@ class InferenceManager:
         bypass_lora: bool = False,
         **kwargs,
     ):
-        """Processes a list of user prompts in a single parallel GPU forward pass."""
         if domain not in self.registry:
             domain = "general"
 
@@ -171,7 +176,8 @@ class InferenceManager:
                         outputs = self.model.generate(
                             **inputs,
                             **config.get("kwargs", {}),
-                            pad_token_id=self.tokenizer.eos_token_id,
+                            pad_token_id=self.tokenizer.pad_token_id,
+                            eos_token_id=self.eos_token_id,
                             **kwargs,
                         )
             else:
@@ -179,7 +185,8 @@ class InferenceManager:
                     outputs = self.model.generate(
                         **inputs,
                         **config.get("kwargs", {}),
-                        pad_token_id=self.tokenizer.eos_token_id,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.eos_token_id,
                         **kwargs,
                     )
         else:
@@ -191,7 +198,8 @@ class InferenceManager:
                 outputs = self.model.generate(
                     **inputs,
                     **config.get("kwargs", {}),
-                    pad_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    eos_token_id=self.eos_token_id,
                     **kwargs,
                 )
                 
@@ -206,7 +214,6 @@ class InferenceManager:
             num_tokens = len(gen_ids)
             response = self.tokenizer.decode(gen_ids, skip_special_tokens=True)
             
-            # Amortize time across batch items
             amortized_gen_ms = gen_ms / len(user_prompts)
             results.append({
                 "response": response,
