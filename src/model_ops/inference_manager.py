@@ -36,7 +36,7 @@ class InferenceManager:
         self.base_model = AutoModelForCausalLM.from_pretrained(
             base_model_id, 
             torch_dtype=dtype,
-            attn_implementation="sdpa",
+            attn_implementation="flash_attention_2",
             device_map={"": 0}
         )
 
