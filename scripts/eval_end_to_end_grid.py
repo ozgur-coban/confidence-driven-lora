@@ -47,7 +47,7 @@ def main():
     load_dotenv()
     
     # --- DETECT COLAB & MOUNT DRIVE ---
-    IN_COLAB = 'google.colab' in sys.modules
+    IN_COLAB = "COLAB_RELEASE_TAG" in os.environ
     if IN_COLAB:
         print("\n[!] Google Colab Environment Detected. Mounting Google Drive...")
         from google.colab import drive
