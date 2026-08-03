@@ -19,7 +19,7 @@ from scripts.evaluate_gsm8k import main as gsm8k_main
 from scripts.evaluate_mbpp import main as mbpp_main
 from dotenv import load_dotenv
 from huggingface_hub import login
-
+from src.model_ops.inference_manager import InferenceManager
 
 
 def format_dataset_for_base_model(dataset, tokenizer, max_length=512,is_verbose=False):
@@ -265,6 +265,48 @@ def debug_mbpp_evaluation():
     finally:
         # Safely restore the original system arguments
         sys.argv = original_argv
+
+def debug_inference_manager():
+    print("\n=== STARTING INFERENCE MANAGER VERIFICATION ===")
+    model_id = "meta-llama/Llama-3.2-3B"
+    raw_adapter_paths = {
+        "code": "./models/adapters/adapter_code/code_codefeedback_3b_base_07.06.2026",
+        "math": "./models/adapters/adapter_math/math_gsm8k_main_3b_base_07.06.2026",
+        "hybrid":"./models/adapters/adapter_hybrid/math_code_ties_07.06.2026/hybrid"
+    }
+
+    # Check which adapters actually exist to prevent PEFT crashes
+    valid_adapters = {}
+    for domain, path in raw_adapter_paths.items():
+        if os.path.exists(path):
+            valid_adapters[domain] = path
+        else:
+            print(f"  [WARNING] Missing adapter for '{domain}' at: {path}")
+
+    if not valid_adapters:
+        print("  [WARNING] No valid adapters found. Running in BASE MODEL ONLY mode.")
+
+    print("1. Initializing InferenceManager for base model execution...")
+    manager = InferenceManager(base_model_id=model_id, adapter_paths=valid_adapters)
+    
+    # 2. Test standard base model query routing
+    test_query = "write a python script that calculates sum of intergers from 1 to 10"
+    print(f"2. Executing text generation")
+    print(f"Input query: {test_query!r}\n")
+    
+    try:
+        # Utilizing max_new_tokens to prevent prolonged generation during local diagnostic loop
+        response = manager.generate(
+            user_prompt=test_query,
+            domain="hybrid",
+            stream=True,
+            # max_new_tokens=200
+        )
+        print(f"\n\nResponse completely decoded: {response!r}")
+        print("\n=== INFERENCE MANAGER DEBUG PASSED ===")
+    except Exception as e:
+        print("\n=== INFERENCE MANAGER DEBUG CRASHED ===")
+        raise e
 def main():
     load_dotenv()
     hf_token = os.getenv("HF_TOKEN")
@@ -272,7 +314,6 @@ def main():
         login(token=hf_token)
     else:
         print("Error: HF_TOKEN not found in .env file")
-    debug_mbpp_evaluation()
-
+    debug_inference_manager()
 if __name__ == "__main__":
     main()

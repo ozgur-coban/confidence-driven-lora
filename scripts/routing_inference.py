@@ -23,7 +23,6 @@ from dotenv import load_dotenv
 from huggingface_hub import login
 from transformers import StoppingCriteria, StoppingCriteriaList
 
-
 # Ensure the root directory is in the path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -60,24 +59,17 @@ def parse_args():
     parser.add_argument(
         "--code_adapter",
         type=str,
-        default="./models/adapters/adapter_code/code_codefeedback_8b_instruct_final_22_04_2026",
+        default="./models/adapters/adapter_code/code_codefeedback_3b_base_07.06.2026",
     )
     parser.add_argument(
         "--math_adapter",
         type=str,
-        default="./models/adapters/adapter_math/math_gsm8k_socratic_8b_instruct_final_22_04_2026",
+        default="./models/adapters/adapter_math/math_gsm8k_main_3b_base_07.06.2026",
     )
-    # parser.add_argument(
-    #     "--medical_adapter",
-    #     type=str,
-    #     # default="./models/adapters/adapter_medical/old_medical",
-    #     # default="./models/adapters/adapter_medical/medical_medalpaca_8b_instruct_final_22_04_2026",
-    #     default="./models/adapters/adapter_medical/medical_icliniq_genmed_10k_8b_instruct_final_23.04.2026",
-    # )
     parser.add_argument(
-        "--use_few_shot_prompt",
-        action="store_true",
-        help="Enable 4-shot examples ",
+        "--hybrid_adapter",
+        type=str,
+        default="./models/adapters/adapter_hybrid/math_code_ties_07.06.2026/hybrid"
     )
     return parser.parse_args()
 
@@ -108,19 +100,22 @@ def main():
     t0 = time.time()
     router = MetaRouter()
 
-    # Ensure router artifacts exist before trying to load them
+    # Ensure all 3 router artifacts exist before trying to load them
     semantic_path = "models/semantic_centroids.npy"
     syntax_path = "models/syntax_router.joblib"
+    meta_path = "models/meta_router.joblib"
 
-    if not (os.path.exists(semantic_path) and os.path.exists(syntax_path)):
+    if not (os.path.exists(semantic_path) and os.path.exists(syntax_path) and os.path.exists(meta_path)):
         print("\n  [ERROR] Router artifacts not found!")
-        print("  Please build them manually by running:")
-        print("    python -m scripts.build_semantic_router --enable_training")
-        print("    python -m scripts.build_syntax_router --enable_training\n")
+        print("  Please build them manually")
         sys.exit(1)
 
     # Load artifacts safely
-    router.load(semantic_path=semantic_path, syntax_path=syntax_path)
+    router.load(
+        semantic_path=semantic_path, 
+        syntax_path=syntax_path, 
+        meta_path=meta_path
+    )
 
     print_profile("Router Loaded", t0)
 
@@ -128,7 +123,7 @@ def main():
     raw_adapter_paths = {
         "code": args.code_adapter,
         "math": args.math_adapter,
-        "medical": args.medical_adapter,
+        "hybrid": args.hybrid_adapter,
     }
 
     # Check which adapters actually exist to prevent PEFT crashes
@@ -143,9 +138,8 @@ def main():
         print("  [WARNING] No valid adapters found. Running in BASE MODEL ONLY mode.")
 
     manager = InferenceManager(
-        base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        base_model_id="meta-llama/Llama-3.2-3B",
         adapter_paths=valid_adapters,
-        use_few_shot_prompt=args.use_few_shot_prompt,
     )
     print_profile("Base Model & LoRAs Loaded", t1)
 
@@ -173,9 +167,7 @@ def main():
 
             if prompt.lower().startswith("/base "):
                 bypass_lora = True
-                prompt = prompt[
-                    6:
-                ].strip()  # Strip the "/base " command from the string
+                prompt = prompt[6:].strip()  # Strip the "/base " command from the string
             elif prompt.lower() == "/base":
                 print(
                     "  [ERROR] Please provide a prompt after the command. Example: /base What is 2+2?"
@@ -184,26 +176,25 @@ def main():
 
             # --- ROUTING ---
             t_route = time.time()
-
+            
+            # Fetch raw probabilities from sub-routers first
             sem_probs = router.semantic.predict_proba(prompt)
             syn_probs = router.syntax.predict_proba(prompt)
 
-            domain, rule, detailed_log = router.predict(prompt, verbose=False)
+            # Predict utilizing the full 6-dimensional Meta-Classifier
+            domain, rule, detailed_log = router.predict(prompt, verbose=False, log_file=None)
             route_time = time.time() - t_route
 
             print("\n  [DEBUG: FULL CLASS PROBABILITIES]")
             print("    Semantic Distribution:")
-            for k, v in sorted(
-                sem_probs.items(), key=lambda item: item[1], reverse=True
-            ):
+            for k, v in sorted(sem_probs.items(), key=lambda item: item[1], reverse=True):
                 print(f"      - {k:<8}: {v:.4f}")
 
             print("    Syntax Distribution:")
-            for k, v in sorted(
-                syn_probs.items(), key=lambda item: item[1], reverse=True
-            ):
+            for k, v in sorted(syn_probs.items(), key=lambda item: item[1], reverse=True):
                 print(f"      - {k:<8}: {v:.4f}")
 
+            print(f"\n  [DEBUG: ROUTER INTERNAL LOG]\n{detailed_log}")
             print(
                 f"\n  [DEBUG: ROUTING DECISION] Predicted Domain: {domain.upper()} | Rule: {rule} | Time: {route_time:.3f}s"
             )
@@ -211,9 +202,9 @@ def main():
 
             # --- GENERATION ---
             if bypass_lora:
-                print(f"\n[LLAMA 3.1 - BASE MODEL ONLY (Routed as {domain.upper()})]:")
+                print(f"\n[LLAMA 3.2 (3B) - BASE MODEL ONLY (Routed as {domain.upper()})]:")
             else:
-                print(f"\n[LLAMA 3.1 - {domain.upper()} EXPERT]:")
+                print(f"\n[LLAMA 3.2 (3B) - {domain.upper()} EXPERT]:")
             print("-" * 50)
 
             t_gen = time.time()

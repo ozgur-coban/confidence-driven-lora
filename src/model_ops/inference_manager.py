@@ -1,29 +1,31 @@
+import time  # Ensure time is imported
+from typing import Optional, Union, Dict
+
 import torch
-from typing import Union
+from peft import PeftModel
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
     TextStreamer,
 )
-from peft import PeftModel
+
 from config.domain_registry import DOMAIN_REGISTRY
-from config.few_shot_prefixes import FEW_SHOT_PREFIXES
 
 
 class InferenceManager:
     model: Union[AutoModelForCausalLM, PeftModel]
+
     def __init__(
         self,
-        base_model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
-        adapter_paths=None,
-        use_few_shot_prompt=False,
+        base_model_id: str = "meta-llama/Llama-3.2-3B",
+        adapter_paths: Optional[Dict[str, str]] = None,
     ):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.registry = DOMAIN_REGISTRY
 
         print(f"Loading tokenizer for {base_model_id}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(base_model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(base_model_id, clean_up_tokenization_spaces=False)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -34,7 +36,9 @@ class InferenceManager:
             bnb_4bit_compute_dtype=torch.float16,
         )
         self.base_model = AutoModelForCausalLM.from_pretrained(
-            base_model_id, quantization_config=quant_config, device_map={"": 0}
+            base_model_id, 
+            quantization_config=quant_config, 
+            device_map={"": 0}
         )
 
         self.model = self.base_model
@@ -54,13 +58,6 @@ class InferenceManager:
 
             self.adapters_loaded = True
             print(f"Adapters loaded: {domain_names}")
-        self.use_few_shot_prompt = use_few_shot_prompt
-
-    def _build_static_few_shot_prompt(self, current_query: str, domain: str) -> str:
-        prefix = FEW_SHOT_PREFIXES.get(domain, "")
-        if not prefix.strip():
-            return current_query
-        return f"{prefix}\nNow solve the following problem:\nInput: {current_query}\nAnswer:"
 
     def generate(
         self,
@@ -69,23 +66,14 @@ class InferenceManager:
         stream: bool = True,
         bypass_lora: bool = False,
         **kwargs,
-    ) -> str:
+    ):
+        
         if domain not in self.registry:
             domain = "general"
 
-        config = self.registry[domain]
-        if self.use_few_shot_prompt:
-            final_user_prompt = self._build_static_few_shot_prompt(user_prompt, domain)
-        else:
-            final_user_prompt = user_prompt
-
-        messages = [
-            {"role": "system", "content": config["system"]},
-            {"role": "user", "content": final_user_prompt},
-        ]
-        prompt_str = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
+        config = self.registry.get(domain, {})
+        
+        prompt_str = f"Question: {user_prompt}\nAnswer:\n"
         inputs = self.tokenizer(prompt_str, return_tensors="pt").to(self.device)
 
         streamer = (
@@ -94,15 +82,22 @@ class InferenceManager:
             else None
         )
 
-        # Check for the bypass_lora flag first
+        switch_ms = 0.0
+        t_gen_start = time.perf_counter()
+
+        # ---------------------------------------------------------
+        # ROUTING EXECUTION & TIMING LOGIC
+        # ---------------------------------------------------------
         if bypass_lora or domain == "general" or not self.adapters_loaded:
             if self.adapters_loaded:
-                # Disables all LoRAs and uses the raw base model weights
+                # Time the disable context entry
+                t0 = time.perf_counter()
                 with self.model.disable_adapter():
+                    switch_ms = (time.perf_counter() - t0) * 1000
                     with torch.no_grad():
                         outputs = self.model.generate(
                             **inputs,
-                            **config["kwargs"],
+                            **config.get("kwargs", {}),
                             pad_token_id=self.tokenizer.eos_token_id,
                             streamer=streamer,
                             **kwargs,
@@ -111,25 +106,40 @@ class InferenceManager:
                 with torch.no_grad():
                     outputs = self.model.generate(
                         **inputs,
-                        **config["kwargs"],
+                        **config.get("kwargs", {}),
                         pad_token_id=self.tokenizer.eos_token_id,
                         streamer=streamer,
                         **kwargs,
                     )
         else:
+            # Time the PEFT set_adapter function
+            t0 = time.perf_counter()
             self.model.set_adapter(domain)
+            switch_ms = (time.perf_counter() - t0) * 1000
+            
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    **config["kwargs"],
+                    **config.get("kwargs", {}),
                     pad_token_id=self.tokenizer.eos_token_id,
                     streamer=streamer,
                     **kwargs,
                 )
+                
+        t_gen_end = time.perf_counter()
+        gen_ms = (t_gen_end - t_gen_start) * 1000
 
         input_length = inputs["input_ids"].shape[1]
-        response = self.tokenizer.decode(
-            outputs[0][input_length:], skip_special_tokens=True
-        )
+        generated_tokens = outputs[0][input_length:]
+        num_tokens = len(generated_tokens)
+        
+        response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
 
-        return response
+        # Return a dictionary with all required paper metrics
+        return {
+            "response": response,
+            "num_tokens": num_tokens,
+            "switch_ms": switch_ms,
+            "generation_ms": gen_ms,
+            "tps": (num_tokens / (gen_ms / 1000)) if gen_ms > 0 else 0.0
+        }
