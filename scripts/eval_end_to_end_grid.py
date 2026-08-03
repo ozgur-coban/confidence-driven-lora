@@ -47,13 +47,16 @@ def main():
     load_dotenv()
     
     # --- DETECT COLAB & MOUNT DRIVE ---
+    # --- DETECT COLAB ENVIRONMENT & DRIVE PATH ---
     IN_COLAB = "COLAB_RELEASE_TAG" in os.environ
     if IN_COLAB:
-        print("\n[!] Google Colab Environment Detected. Mounting Google Drive...")
-        from google.colab import drive
-        drive.mount('/content/drive')
-        os.makedirs(args.drive_dir, exist_ok=True)
-        print(f" -> Drive mounted. Logs will be synced to: {args.drive_dir}\n")
+        if os.path.exists("/content/drive"):
+            print("\n[!] Google Colab Environment Detected. Google Drive is available.")
+            os.makedirs(args.drive_dir, exist_ok=True)
+            print(f" -> Logs will be synced to: {args.drive_dir}\n")
+        else:
+            print("\n[!] Google Colab Environment Detected, but /content/drive is not mounted.")
+            print(" -> Mount Drive in your notebook cell before running this script.\n")
 
     if os.getenv("HF_TOKEN"):
         login(token=os.getenv("HF_TOKEN"))
