@@ -5,6 +5,7 @@ import time
 import shutil
 import argparse
 import pandas as pd
+from collections import defaultdict
 from tqdm import tqdm
 from dotenv import load_dotenv
 from huggingface_hub import login
@@ -26,33 +27,18 @@ def load_standardized_json(filepath, max_samples=None):
 def parse_args():
     parser = argparse.ArgumentParser(description="Parameterized End-to-End Evaluation Grid")
     
-    # Dataset Selection
-    parser.add_argument(
-        "--datasets", nargs="+", 
-        choices=["gsm8k", "codefeedback", "mixed", "hybrid", "wildchat", "all"],
-        default=["all"], help="Which datasets to evaluate."
-    )
-    
-    # Configuration Selection
-    parser.add_argument(
-        "--configs", nargs="+", 
-        choices=["base", "pure_math", "pure_code", "hybrid_adapter", "routed", "all"],
-        default=["all"], help="Which configurations (adapters/routers) to test."
-    )
-    
-    # Adapter Paths
+    parser.add_argument("--datasets", nargs="+", choices=["gsm8k", "codefeedback", "mixed", "hybrid", "wildchat", "all"], default=["all"])
+    parser.add_argument("--configs", nargs="+", choices=["base", "pure_math", "pure_code", "hybrid_adapter", "routed", "all"], default=["all"])
     parser.add_argument("--code_adapter", default="./models/adapters/adapter_code/code_codefeedback_3b_base_07.06.2026")
     parser.add_argument("--math_adapter", default="./models/adapters/adapter_math/math_gsm8k_main_3b_base_07.06.2026")
     parser.add_argument("--hybrid_adapter", default="./models/adapters/adapter_hybrid/math_code_ties_07.06.2026/hybrid")
+    parser.add_argument("--num_samples", type=int, default=-1)
     
-    # Execution Modifiers
-    parser.add_argument("--num_samples", type=int, default=-1, help="Limit samples per dataset for quick testing.")
-    # parser.add_argument("--max_new_tokens", type=int, default=512, help="Max tokens to generate.")
-    parser.add_argument("--out_dir", type=str, default="logs/eval_grid", help="Local directory for output JSONs.")
+    # PARAMETERIZED BATCH SIZE
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for parallel generation.")
     
-    # --- GOOGLE DRIVE INTEGRATION ---
-    parser.add_argument("--drive_dir", type=str, default="/content/drive/MyDrive/capstone_eval_logs", 
-                        help="Google Drive path to sync logs to (Only used if running in Colab).")
+    parser.add_argument("--out_dir", type=str, default="logs/eval_grid")
+    parser.add_argument("--drive_dir", type=str, default="/content/drive/MyDrive/capstone_eval_logs")
     
     return parser.parse_args()
 
@@ -61,27 +47,28 @@ def main():
     load_dotenv()
     
     # --- DETECT COLAB & MOUNT DRIVE ---
-    IN_COLAB = 'google.colab' in sys.modules
+    # --- DETECT COLAB ENVIRONMENT & DRIVE PATH ---
+    IN_COLAB = "COLAB_RELEASE_TAG" in os.environ
     if IN_COLAB:
-        print("\n[!] Google Colab Environment Detected. Mounting Google Drive...")
-        from google.colab import drive
-        drive.mount('/content/drive')
-        os.makedirs(args.drive_dir, exist_ok=True)
-        print(f" -> Drive mounted. Logs will be synced to: {args.drive_dir}\n")
+        if os.path.exists("/content/drive"):
+            print("\n[!] Google Colab Environment Detected. Google Drive is available.")
+            os.makedirs(args.drive_dir, exist_ok=True)
+            print(f" -> Logs will be synced to: {args.drive_dir}\n")
+        else:
+            print("\n[!] Google Colab Environment Detected, but /content/drive is not mounted.")
+            print(" -> Mount Drive in your notebook cell before running this script.\n")
 
     if os.getenv("HF_TOKEN"):
         login(token=os.getenv("HF_TOKEN"))
 
     os.makedirs(args.out_dir, exist_ok=True)
 
-    # Resolve "all" arguments
     all_datasets = ["gsm8k", "codefeedback", "mixed", "hybrid", "wildchat"]
     all_configs = ["base", "pure_math", "pure_code", "hybrid_adapter", "routed"]
     
     target_datasets = all_datasets if "all" in args.datasets else args.datasets
     target_configs = all_configs if "all" in args.configs else args.configs
 
-    # 1. Boot Subsystems
     print("\n[1] Booting Subsystems...")
     router = None
     if "routed" in target_configs:
@@ -97,7 +84,6 @@ def main():
     print("Loading LLM and LoRAs (This takes a moment)...")
     llm = InferenceManager(base_model_id="meta-llama/Llama-3.2-3B", adapter_paths=adapters)
 
-    # 2. File Map (Adjust these to match your actual standardized file names)
     dataset_files = {
         "gsm8k": "data/final_datasets/formatted/formatted_gsm8k.json",
         "codefeedback": "data/final_datasets/formatted/formatted_codefeedback.json",
@@ -110,6 +96,7 @@ def main():
     print(f"STARTING EVALUATION GRID")
     print(f"Datasets: {target_datasets}")
     print(f"Configs:  {target_configs}")
+    print(f"Batch Size: {args.batch_size}")
     print("="*50)
 
     # 3. Execution Loop
@@ -123,84 +110,85 @@ def main():
         for config in target_configs:
             print(f" -> Configuration: {config.upper()}")
             
-            master_log = []
-            
-            for item in tqdm(data, desc=f"Generating ({config})"):
-                log_entry = {
-                    "dataset": ds_name,
-                    "configuration": config,
-                    "prompt_id": item.get("id", "unknown"),
-                    "expected_domain": item.get("expected_domain", "unknown"),
-                    "routed_domain": None,
-                    "router_confidence": None,
-                    "routing_correct": None,
-                    "adapter_switch_ms": 0.0,
-                    "generation_ms": 0.0,
-                    "tokens_generated": 0,
-                    "tps": 0.0,
-                    "execution_correct": None,
-                    "prompt": item["prompt"],
-                    "generated_response": "",
-                    "ground_truth_answer": item.get("ground_truth_answer", "")
-                }
+            master_log = [None] * len(data)
+            routed_tasks = []
 
-                target_adapter = "general"
-                bypass_lora = False
-                
-                # --- ROUTING PHASE ---
+            # Routing Pass (instant)
+            for i, item in enumerate(data):
                 if config == "routed":
                     decision, rule, detailed_log, conf = router.predict(
                         item["prompt"], verbose=False, hybrid_margin=0.0, 
                         hybrid_min_confidence=0.30, hybrid_min_existence=0.0
                     )
-                    log_entry["routed_domain"] = decision
-                    log_entry["router_confidence"] = conf
-                    log_entry["routing_correct"] = (decision == item.get("expected_domain"))
-                    
-                    target_adapter = decision
-                    if decision == "general":
-                        bypass_lora = True
+                    routed_tasks.append({
+                        "idx": i, "item": item, "decision": decision, "conf": conf,
+                        "target_adapter": decision, "bypass_lora": (decision == "general")
+                    })
                 else:
-                    # Static configs
-                    if config == "base":
-                        bypass_lora = True
-                    elif config == "hybrid_adapter":
-                        target_adapter = "hybrid"
-                    else:
-                        target_adapter = config.replace("pure_", "") # "math" or "code"
+                    target_adapter = "general" if config == "base" else (
+                        "hybrid" if config == "hybrid_adapter" else config.replace("pure_", "")
+                    )
+                    routed_tasks.append({
+                        "idx": i, "item": item, "decision": None, "conf": None,
+                        "target_adapter": target_adapter, "bypass_lora": (config == "base")
+                    })
 
-                # --- GENERATION PHASE ---
-                metrics = llm.generate(
-                    user_prompt=item["prompt"],
-                    domain=target_adapter,
-                    stream=False,
-                    bypass_lora=bypass_lora,
-                    # max_new_tokens=args.max_new_tokens
-                )
-                
-                log_entry["adapter_switch_ms"] = metrics["switch_ms"]
-                log_entry["generation_ms"] = metrics["generation_ms"]
-                log_entry["tokens_generated"] = metrics["num_tokens"]
-                log_entry["tps"] = metrics["tps"]
-                log_entry["generated_response"] = metrics["response"]
+            # Group for batching
+            grouped_tasks = defaultdict(list)
+            for task in routed_tasks:
+                grouped_tasks[(task["target_adapter"], task["bypass_lora"])].append(task)
 
-                # --- EVALUATION PHASE ---
-                truth = item.get("ground_truth_answer")
-                expected = item.get("expected_domain")
-                
-                if truth:
-                    if expected == "math" or ds_name == "gsm8k":
-                        log_entry["execution_correct"] = evaluate_math(metrics["response"], truth)
-                    elif expected == "code" or ds_name == "codefeedback":
-                        # Leave as None for offline LLM-as-a-judge evaluation
-                        log_entry["execution_correct"] = None 
-                    elif expected == "hybrid":
-                        # We can evaluate the math portion automatically, but the final
-                        # determination requires offline LLM evaluation of the code.
-                        # Leaving as None so it isn't accidentally counted as a strict False.
-                        log_entry["execution_correct"] = None
+            # Generate Pass
+            with tqdm(total=len(data), desc=f"Generating ({config})") as pbar:
+                for (target_adapter, bypass_lora), tasks in grouped_tasks.items():
+                    for i in range(0, len(tasks), args.batch_size):
+                        batch = tasks[i : i + args.batch_size]
+                        prompts = [t["item"]["prompt"] for t in batch]
+                        
+                        metrics_list = llm.generate_batch(
+                            user_prompts=prompts,
+                            domain=target_adapter,
+                            bypass_lora=bypass_lora,
+                        )
+                        
+                        for task, metrics in zip(batch, metrics_list):
+                            item = task["item"]
+                            expected = item.get("expected_domain")
+                            
+                            log_entry = {
+                                "dataset": ds_name,
+                                "configuration": config,
+                                "prompt_id": item.get("id", "unknown"),
+                                "expected_domain": expected,
+                                "routed_domain": task["decision"],
+                                "router_confidence": task["conf"],
+                                "routing_correct": (task["decision"] == expected) if task["decision"] else None,
+                                "adapter_switch_ms": metrics["switch_ms"],
+                                "generation_ms": metrics["generation_ms"],
+                                "tokens_generated": metrics["num_tokens"],
+                                "tps": metrics["tps"],
+                                "execution_correct": None,
+                                "prompt": item["prompt"],
+                                "generated_response": metrics["response"],
+                                "ground_truth_answer": item.get("ground_truth_answer", "")
+                            }
 
-                master_log.append(log_entry)
+                            # --- EVALUATION PHASE (RESTORED) ---
+                            truth = item.get("ground_truth_answer")
+                            if truth:
+                                if expected == "math" or ds_name == "gsm8k":
+                                    log_entry["execution_correct"] = evaluate_math(metrics["response"], truth)
+                                elif expected == "code" or ds_name == "codefeedback":
+                                    # Leave as None for offline LLM-as-a-judge evaluation
+                                    log_entry["execution_correct"] = None 
+                                elif expected == "hybrid":
+                                    # We can evaluate the math portion automatically, but the final
+                                    # determination requires offline LLM evaluation of the code.
+                                    # Leaving as None so it isn't accidentally counted as a strict False.
+                                    log_entry["execution_correct"] = None
+                            
+                            master_log[task["idx"]] = log_entry
+                            pbar.update(1)
 
             # Save individual config-dataset combination locally
             out_filename = f"{args.out_dir}/eval_{ds_name}_{config}.json"
