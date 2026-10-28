@@ -1,0 +1,30 @@
+import os
+from datasets import load_dataset
+from dotenv import load_dotenv
+from huggingface_hub import login
+
+load_dotenv()
+hf_token = os.getenv("HF_TOKEN")
+if hf_token:
+    print("  [AUTH] Hugging Face token found. Logging in...")
+    login(token=hf_token)
+else:
+    print(
+        "  [WARNING] HF_TOKEN not found in .env file. Gated models will fail to load."
+    )
+
+# 2. Load your local JSON into a Hugging Face Dataset object
+print("Loading local JSON...")
+dataset = load_dataset(
+    "json",
+    data_files="./data/code_math_mixed_dataset/code_math_hybrid_basic_300.json",
+    split="train",
+)
+
+repo_id = "ozgur-coban/code_math_hybrid_300"
+
+print(f"Pushing to {repo_id}...")
+# Setting private=True
+dataset.push_to_hub(repo_id, private=True)
+
+print("Upload complete!")
