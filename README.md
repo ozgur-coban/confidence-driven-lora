@@ -1,7 +1,7 @@
 # Dynamic Multi-Adapter Routing: Improving Generalization Loss in LLMs without Resource Overhead
 
-[![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models%20%26%20Routers-blue)](https://huggingface.co/ozgur-coban/multi-adapter)
-[![Hugging Face Datasets](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Datasets%20%26%20Logs-orange)](https://huggingface.co/datasets/ozgur-coban/multi-adapter-datasets)
+[![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models%20%26%20Routers-blue)](https://huggingface.co/mutli-adapter-routing/multi-adapter)
+[![Hugging Face Datasets](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Datasets%20%26%20Logs-orange)](https://huggingface.co/datasets/mutli-adapter-routing/multi-adapter-datasets)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.11.0-EE4C2C.svg)](https://pytorch.org/)
 [![PEFT](https://img.shields.io/badge/PEFT-0.19.1-yellow.svg)](https://github.com/huggingface/peft)
 
@@ -88,13 +88,13 @@ HF_TOKEN=your_huggingface_token_here
 
 ## Quickstart: Using Pre-Trained Artifacts
 
-You can download all trained LoRA adapters and router artifacts directly from [ozgur-coban/multi-adapter](https://huggingface.co/ozgur-coban/multi-adapter):
+You can download all trained LoRA adapters and router artifacts directly from [mutli-adapter-routing/multi-adapter](https://huggingface.co/mutli-adapter-routing/multi-adapter):
 
 ```python
 from huggingface_hub import snapshot_download
 
 snapshot_download(
-    repo_id="ozgur-coban/multi-adapter",
+    repo_id="mutli-adapter-routing/multi-adapter",
     local_dir="./models"
 )
 ```
