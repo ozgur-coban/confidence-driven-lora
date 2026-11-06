@@ -5,14 +5,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
+# True LaTeX rendering enabled
 sns.set_theme(style="white", context="paper")
 plt.rcParams.update({
+    'text.usetex': True,                     # Enables true LaTeX text engine
     'font.family': 'serif',
-    'font.size': 12,
-    'axes.labelsize': 12,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
+    'font.serif': ['Computer Modern Roman'], # Standard arXiv serif font
+    'font.size': 10,                         # 10pt matches standard LaTeX document text
+    'axes.labelsize': 10,
+    'xtick.labelsize': 9,
+    'ytick.labelsize': 9,
+    'legend.fontsize': 9,
     'axes.spines.top': False,
     'axes.spines.right': False,
     'figure.autolayout': True,
@@ -42,6 +45,7 @@ CONFIG_MAP = {
 
 def save_academic_figure(filename_base):
     """Saves both a PNG for viewing and a high-res PDF for the paper."""
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     plt.savefig(os.path.join(OUTPUT_DIR, f"{filename_base}.png"), dpi=300, bbox_inches='tight')
     plt.savefig(os.path.join(OUTPUT_DIR, f"{filename_base}.pdf"), format='pdf', bbox_inches='tight')
 
@@ -72,12 +76,11 @@ def plot_accuracy_heatmap(df: pd.DataFrame):
     dataset_order = ['GSM8K', 'CodeFeedback', 'Hybrid', 'Mixed', 'WildChat']
     pivot_df = pivot_df.reindex(index=dataset_order, columns=config_order)
 
-    plt.figure(figsize=(9, 5))
-    ax = sns.heatmap(pivot_df, annot=True, fmt=".1f", cmap="Blues", cbar_kws={'label': 'Accuracy (%)'})
+    plt.figure(figsize=(6, 3.5))
+    ax = sns.heatmap(pivot_df, annot=True, fmt=".1f", cmap="Blues", cbar_kws={'label': 'Accuracy (\%)'})
     
     plt.ylabel("Dataset", fontweight='bold')
     plt.xlabel("Model Configuration", fontweight='bold')
-    
     
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
@@ -91,16 +94,16 @@ def plot_router_efficacy(df: pd.DataFrame):
     task_df = routed_df[routed_df['dataset'] != 'WildChat']
     routing_acc = task_df.groupby('dataset')['routing_correct'].mean() * 100
     
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(6, 4))
     ax = sns.barplot(x=routing_acc.index, y=routing_acc.values, color=PRIMARY_COLOR)
     
-    plt.ylabel("Accuracy (%)", fontweight='bold')
+    plt.ylabel("Accuracy (\%)", fontweight='bold')
     plt.xlabel("Dataset", fontweight='bold')
     plt.ylim(0, 100)
     
     for p in ax.patches:
-        ax.annotate(f"{p.get_height():.1f}%", (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='bottom', fontsize=11, xytext=(0, 3), textcoords='offset points')
+        ax.annotate(f"{p.get_height():.1f}\%", (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='bottom', fontsize=9, xytext=(0, 3), textcoords='offset points')
                     
     save_academic_figure("2a_router_accuracy")
     plt.close()
@@ -109,9 +112,11 @@ def plot_router_efficacy(df: pd.DataFrame):
     dist = wildchat_routed['routed_domain'].value_counts()
     clean_dist_index = [d.capitalize() for d in dist.index]
     
-    plt.figure(figsize=(6, 6))
+    plt.figure(figsize=(4, 4))
     colors = ['#d1e5f0', '#67a9cf', '#2166ac', '#fddbc7']
-    plt.pie(dist.values, labels=clean_dist_index, autopct='%1.1f%%', startangle=140, colors=colors, 
+    
+    # FIXED: Used raw string format so Python handles the formatting and passes valid LaTeX `\%` to the renderer
+    plt.pie(dist.values, labels=clean_dist_index, autopct=r'%1.1f\%%', startangle=140, colors=colors, 
             wedgeprops={'edgecolor': 'black', 'linewidth': 1})
             
     save_academic_figure("2b_wildchat_routing_distribution")
@@ -125,14 +130,14 @@ def plot_latency_and_throughput(df: pd.DataFrame):
     metrics = metrics.reindex(config_order)
     metrics.loc['Base Model', 'adapter_switch_ms'] = np.nan
 
-    fig, ax1 = plt.subplots(figsize=(9, 5))
+    fig, ax1 = plt.subplots(figsize=(6, 4))
 
     ax1.set_xlabel('Model Configuration', fontweight='bold')
     ax1.set_ylabel('Throughput (Tokens per Second)', color=PRIMARY_COLOR, fontweight='bold')
     bars = ax1.bar(metrics.index, metrics['tps'], color=PRIMARY_COLOR, alpha=0.8, label="TPS")
     ax1.tick_params(axis='y', labelcolor=PRIMARY_COLOR)
     
-    
+    ax1.set_xticks(range(len(metrics.index)))
     ax1.set_xticklabels(metrics.index, rotation=45, ha='right')
 
     ax2 = ax1.twinx()  
@@ -148,49 +153,46 @@ def plot_latency_and_throughput(df: pd.DataFrame):
     plt.close()
 
 def plot_hybrid_performance(df: pd.DataFrame):
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(6, 4))
     config_order = ['Base Model', 'Math Adapter', 'Code Adapter', 'TIES Merged', 'Routed System']
 
     hybrid_df = df[df['dataset'] == 'Hybrid'].groupby('configuration')['execution_correct'].mean() * 100
     hybrid_df = hybrid_df.reindex(config_order)
     
     ax = sns.barplot(x=hybrid_df.index, y=hybrid_df.values, color=PRIMARY_COLOR)
-    plt.ylabel("Accuracy (%)", fontweight='bold')
+    plt.ylabel("Accuracy (\%)", fontweight='bold')
     plt.xlabel("Model Configuration", fontweight='bold')
-    
     
     plt.xticks(rotation=45, ha='right')
     
     for p in ax.patches:
-        ax.annotate(f"{p.get_height():.1f}%", (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='bottom', fontsize=11, xytext=(0, 3), textcoords='offset points')
+        ax.annotate(f"{p.get_height():.1f}\%", (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='bottom', fontsize=9, xytext=(0, 3), textcoords='offset points')
 
     save_academic_figure("4a_hybrid_performance")
     plt.close()
 
 def plot_wildchat_performance(df: pd.DataFrame):
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(6, 4))
     config_order = ['Base Model', 'Math Adapter', 'Code Adapter', 'TIES Merged', 'Routed System']
     
     wildchat_df = df[df['dataset'] == 'WildChat'].groupby('configuration')['execution_correct'].mean() * 100
     wildchat_df = wildchat_df.reindex(config_order)
     
     ax = sns.barplot(x=wildchat_df.index, y=wildchat_df.values, color=PRIMARY_COLOR)
-    plt.ylabel("Accuracy (%)", fontweight='bold')
+    plt.ylabel("Accuracy (\%)", fontweight='bold')
     plt.xlabel("Model Configuration", fontweight='bold')
-    
     
     plt.xticks(rotation=45, ha='right')
     
     for p in ax.patches:
-        ax.annotate(f"{p.get_height():.1f}%", (p.get_x() + p.get_width() / 2., p.get_height()),
-                    ha='center', va='bottom', fontsize=11, xytext=(0, 3), textcoords='offset points')
+        ax.annotate(f"{p.get_height():.1f}\%", (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='bottom', fontsize=9, xytext=(0, 3), textcoords='offset points')
 
     save_academic_figure("4b_wildchat_performance")
     plt.close()
 
 if __name__ == "__main__":
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
     df = load_and_clean_data(INPUT_DIR)
     
     plot_accuracy_heatmap(df)
@@ -199,4 +201,4 @@ if __name__ == "__main__":
     plot_hybrid_performance(df)
     plot_wildchat_performance(df)
     
-    print(f"Academic graphs (PNG and PDF) saved to '{OUTPUT_DIR}'")
+    print(f"Academic graphs (PNG and PDF) successfully saved to '{OUTPUT_DIR}'")

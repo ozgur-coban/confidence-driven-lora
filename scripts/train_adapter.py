@@ -97,7 +97,6 @@ def parse_args():
             "GBaker/MedQA-USMLE-4-options",
             "m-a-p/CodeFeedback-Filtered-Instruction",
             "meta-math/MetaMathQA",
-            "ozgur-coban/medical-lora-10k",  
             "mixed",  
         ],
         required=True,
@@ -207,10 +206,6 @@ def main():
             )
         elif args.dataset == "meta-math/MetaMathQA":
             preprocessor = MetaMathPreprocessor(
-                tokenizer, max_length=args.max_length, data_size=args.data_size
-            )
-        elif args.dataset == "ozgur-coban/medical-lora-10k":
-            preprocessor = CustomMedicalPreprocessor(
                 tokenizer, max_length=args.max_length, data_size=args.data_size
             )
         else:
