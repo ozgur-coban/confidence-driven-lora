@@ -1,6 +1,6 @@
 import re
 
-# --- MATH EVALUATION (From your provided script) ---
+
 def clean_math_string(s: str) -> str:
     """Normalizes math outputs: safely unwraps \\boxed{}, strips $, cleans commas."""
     if not isinstance(s, str):

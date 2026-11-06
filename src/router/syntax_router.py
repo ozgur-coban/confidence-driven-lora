@@ -59,8 +59,7 @@ class SyntaxRouter:
             # Get indices of the top N largest coefficients
             top_indices = np.argsort(coefs)[-n:]
 
-            # Map indices back to the actual n-gram strings
-            # We reverse it so the highest weighted is first
+
             top_features = [feature_names[j] for j in reversed(top_indices)]
             top_identifiers[class_label] = top_features
 

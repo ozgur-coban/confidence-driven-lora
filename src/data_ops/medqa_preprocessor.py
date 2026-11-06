@@ -21,12 +21,12 @@ class MedQAPreprocessor(BasePreprocessor):
         # 1. Load raw dataset
         raw_dataset = load_dataset("GBaker/MedQA-USMLE-4-options", split="train")
 
-        # 2. SPEED OPTIMIZATION: Slice a "safe pool" before the expensive filter
+
         safe_pool_size = min(self.data_size * 5, len(raw_dataset))
         print(f"Slicing to {safe_pool_size} samples before filtering for speed...")
         raw_dataset = raw_dataset.shuffle(seed=42).select(range(safe_pool_size))
 
-        # 3. FILTER LOGIC (Strict Token Length)
+        # 3. FILTER LOGIC ( Token Length)
         def is_within_length(example):
             messages = self.format_prompt(example)["messages"]
             full_text = self.tokenizer.apply_chat_template(messages, tokenize=False)

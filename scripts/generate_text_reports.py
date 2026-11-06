@@ -90,7 +90,7 @@ def generate_text_report(df: pd.DataFrame):
     perf = core_df.groupby('configuration')[['adapter_switch_ms', 'tps']].mean()
     perf = perf.reindex(cols)
     
-    # Hide the irrelevant base model teardown latency
+    
     perf.loc['Base', 'adapter_switch_ms'] = np.nan
     
     perf.columns = ['Avg Switch Latency (ms)', 'Avg TPS (Tokens/sec)']

@@ -61,7 +61,7 @@ class DatasetManager:
         return training_dict
 
     def get_testing_data(self, test_samples: int = 500, specialist_offset: int = 6000):
-        from datasets import get_dataset_split_names  # Add this import if needed
+        from datasets import get_dataset_split_names  
 
         testing_dict = {}
         for domain, config in self.domain_configs.items():
@@ -84,10 +84,10 @@ class DatasetManager:
             ds = load_dataset(config["path"], config.get("name"), split=split_to_load)
             col = config["column"]
 
-            # 3. Apply offset ONLY if we are using a non-test split (like train or validation)
+
             start_idx = 0 if split_to_load == "test" else specialist_offset
 
-            # 4. Ensure we don't exceed dataset bounds
+
             end_idx = min(start_idx + test_samples, len(ds))
 
             # If the dataset is too small for the offset, adjust start_idx to get whatever is left

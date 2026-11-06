@@ -30,7 +30,7 @@ def run_wildchat_eval(wildchat_path="./data/wildchat/hybrid_wildchat_from_gemini
     
     print(f"\nLoaded {len(prompts)} OOD prompts from {wildchat_path}")
     
-    # 3. Track metrics (Ground truth is assumed to be 'hybrid' for this test set)
+    # 3. Track metrics 
     results = {
         "math": 0,
         "code": 0,
@@ -41,7 +41,7 @@ def run_wildchat_eval(wildchat_path="./data/wildchat/hybrid_wildchat_from_gemini
     detailed_errors = []
     correct_classifications = []
     
-    # 4. Predict using your highly optimized parameters
+    # 4. Predict using parameters
     print("Running inference...")
     for prompt in prompts:
         decision, rule, detailed_log = router.predict(

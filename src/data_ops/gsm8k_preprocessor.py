@@ -19,14 +19,14 @@ class GSM8KPreprocessor(BasePreprocessor):
         # 1. Load raw dataset
         raw_dataset = load_dataset("openai/gsm8k", name="main", split="train")
 
-        # 2. SPEED OPTIMIZATION: Slice a "safe pool" before the expensive filter
+
         safe_pool_size = min(self.data_size * 5, len(raw_dataset))
         print(f"Slicing to {safe_pool_size} samples before filtering for speed...")
         raw_dataset = raw_dataset.shuffle(seed=42).select(range(safe_pool_size))
 
         # 3. FILTER LOGIC
         def is_within_length(example):
-            # Simulate the exact base model formatting from train_adapter.py to check token length
+
             q = example["question"]
             a = example["answer"]
             full_text = f"Question: {q}\nAnswer:\n{a}{self.tokenizer.eos_token}"
