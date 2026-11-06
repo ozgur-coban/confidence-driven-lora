@@ -176,7 +176,7 @@ def main():
         )
         inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
-        # Merge kwargs but FORCE max_new_tokens to 10 for evaluation speed
+        
         gen_kwargs = domain_cfg["kwargs"].copy()
         gen_kwargs["max_new_tokens"] = 10
 

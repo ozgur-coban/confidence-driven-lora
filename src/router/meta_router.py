@@ -75,7 +75,7 @@ class MetaRouter:
         self.meta_classifier.fit(X, y)
         self.is_meta_trained = True
 
-        # --- DIAGNOSTIC: FEATURE IMPORTANCE PRINT ---
+        # ---  FEATURE IMPORTANCE PRINT ---
         print("\n" + "=" * 50)
         print("RANDOM FOREST FEATURE IMPORTANCES")
         print("=" * 50)
@@ -94,9 +94,9 @@ class MetaRouter:
             prompt: str, 
             verbose: bool = False, 
             log_file=None,
-            hybrid_margin: float = 0.0,         # Dropped to 0 (Trust the RF's margin)
+            hybrid_margin: float = 0.0,         # Dropped to 0
             hybrid_min_confidence: float = 0.30,
-            hybrid_min_existence: float = 0.0   # Dropped to 0 (Stop vetoing equations)
+            hybrid_min_existence: float = 0.0   # Dropped to 0 
         ):
             if not self.is_meta_trained:
                 raise ValueError("Meta-Classifier is not trained or loaded. Call fit() or load() first.")

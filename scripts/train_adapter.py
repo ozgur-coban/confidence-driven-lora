@@ -13,12 +13,12 @@ from datasets import concatenate_datasets  # Added for mixed datasets
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.data_ops.gsm8k_preprocessor import GSM8KPreprocessor
-from src.data_ops.codealpaca_preprocessor import CodeAlpacaPreprocessor
+from artifacts.old_code.codealpaca_preprocessor import CodeAlpacaPreprocessor
 from src.data_ops.codefeedback_preprocessor import CodeFeedbackPreprocessor
-from src.data_ops.medical_meadow_flashcards_preprocessor import MedicalMeadowFlashcardsPreprocessor
+from artifacts.old_code.medical_meadow_flashcards_preprocessor import MedicalMeadowFlashcardsPreprocessor
 from src.data_ops.medqa_preprocessor import MedQAPreprocessor
-from src.data_ops.metamath_preprocessor import MetaMathPreprocessor
-from src.data_ops.icliniq_genmed_preprocessor import CustomMedicalPreprocessor
+from artifacts.old_code.metamath_preprocessor import MetaMathPreprocessor
+from artifacts.old_code.icliniq_genmed_preprocessor import CustomMedicalPreprocessor
 from src.model_ops.lora_manager import LoraManager
 from src.training.trainer import AdapterTrainer
 
@@ -67,7 +67,6 @@ def parse_args():
         help="Path to a specific checkpoint folder to resume training.",
     )
 
-    # LORA arguments updated to match LoRA Soups paper defaults
     parser.add_argument("--r", type=int, default=32, help="LoRA rank.")
     parser.add_argument("--lora_alpha", type=int, default=64, help="LoRA alpha.")
     parser.add_argument(
@@ -128,7 +127,7 @@ def format_dataset_for_base_model(dataset, tokenizer, max_length):
         input_ids = prompt_ids + answer_ids
         labels = [-100] * len(prompt_ids) + answer_ids
         
-        # Enforce max_length manually since we concatenated outside the tokenizer
+        # Enforce max_length manually
         if len(input_ids) > max_length:
             input_ids = input_ids[:max_length]
             labels = labels[:max_length]

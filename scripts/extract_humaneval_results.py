@@ -22,7 +22,7 @@ def main():
 
     for item in tqdm(data, desc="Evaluating Code"):
         # 1. Stitch the executable script together
-        # We combine the model's code, the assertion tests, and the trigger function
+      
         full_script = (
             f"{item['extracted_code']}\n{item['test']}\ncheck({item['entry_point']})\n"
         )

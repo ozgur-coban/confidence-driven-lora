@@ -26,8 +26,7 @@ def prepare_eval_files_from_dir(
 
     print(f"Found {len(json_files)} JSON files in '{input_dir}'. Loading...")
 
-    # 2. Ingest, normalize, and group records
-    # Using a defaultdict to map "configuration_dataset" -> [list of clean records]
+    
     grouped_records: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     seen_ids = set()
     total_items = 0
@@ -75,7 +74,7 @@ def prepare_eval_files_from_dir(
 
     print(f"Loaded {total_items} unique records across all files.")
 
-    # 3. Save grouped records into separate files
+    # Save grouped records into separate files
     for group_key, records in grouped_records.items():
         output_filename = f"{group_key}.json"
         output_path = os.path.join(output_dir, output_filename)

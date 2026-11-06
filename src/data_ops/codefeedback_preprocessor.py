@@ -22,19 +22,19 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
             "m-a-p/CodeFeedback-Filtered-Instruction", split="train"
         )
 
-        # 1. Native Arrow filtering for Python (keeps memory footprint very low)
+        # 1. Native Arrow filtering for Python
         print("Filtering strictly for Python samples...")
         python_dataset = raw_dataset.filter(
             lambda example: str(example.get("lang", "")).strip().lower() == "python",
             num_proc=4,
         )
 
-        # 2. SPEED OPTIMIZATION: Slice a "safe pool" using native shuffle and select
+
         safe_pool_size = min(self.data_size * 10, len(python_dataset))
         print(f"Slicing to {safe_pool_size} Python samples before tokenization check...")
         pool_dataset = python_dataset.shuffle(seed=42).select(range(safe_pool_size))
 
-        # 3. Placeholder for pure code extraction (currently using raw answer)
+
         print("Preparing text fields...")
         def prepare_fields(example):
             text = str(example.get("answer", ""))
@@ -49,7 +49,7 @@ class CodeFeedbackPreprocessor(BasePreprocessor):
         processed_pool = pool_dataset.map(prepare_fields, num_proc=4)
         processed_pool = processed_pool.filter(lambda x: len(x["pure_code"]) > 0, num_proc=4)
 
-        # 4. FILTER LOGIC (Strict Token Length)
+        # 4. FILTER LOGIC ( Token Length)
         def is_within_length(example):
             q = str(example.get("query", "")).strip()
             a = str(example.get("pure_code", "")).strip()

@@ -36,8 +36,7 @@ def main():
 
     if args.enable_training:
         print("\n1. Fetching Training Data from Data Manager...")
-        # You can tweak the General mixture here.
-        # 50k total (25k SQuAD + 25k UltraChat) is a massive, balanced background.
+
         training_data = data_manager.get_training_data(
             specialist_samples=args.specialist_samples,
             squad_samples=100000,

@@ -15,7 +15,7 @@ def preprocess_wildchat_jsonl(input_path, output_path):
             chat = json.loads(line)
             conversation = chat.get("conversation", [])
             
-            # --- 1. THE FORGIVING LANGUAGE FILTER ---
+            
             is_valid_chat = True
             for msg in conversation:
                 lang = msg.get("language")
@@ -31,8 +31,8 @@ def preprocess_wildchat_jsonl(input_path, output_path):
                 dropped_explicitly_non_english += 1
                 continue
                 
-            # --- 2. FIELD STRIPPING ---
-            # Create a lightweight dict containing only our target fields
+           
+            
             cleaned_chat = {
                 "conversation_hash": chat.get("conversation_hash"),
                 "model": chat.get("model"),
@@ -109,7 +109,7 @@ def extract_prompts_from_cleaned_jsonl(input_path, output_path):
                         if i > 0 and conversation[i-1].get("role") == "user":
                             user_prompt = conversation[i-1].get("content", "").strip()
                             
-                            # Apply length filter AND our new heuristic filter
+                            # Apply length filter AND heuristic filter
                             if len(user_prompt) > 20:
                                 if is_junk_prompt(user_prompt):
                                     dropped_due_to_junk += 1
@@ -159,13 +159,12 @@ def filter_length_outliers(prompts_list, top_percent_to_cut=5):
     lengths.sort()
     
     # Determine the index for the cutoff threshold
-    # e.g., 95% of 460 items = 437 items to keep
     keep_count = int(len(lengths) * (1 - (top_percent_to_cut / 100.0)))
     
     if keep_count == 0:
         return []
         
-    # The cutoff length is the character count of the largest item we want to keep
+
     cutoff_length = lengths[keep_count - 1]
     
     filtered_prompts = []

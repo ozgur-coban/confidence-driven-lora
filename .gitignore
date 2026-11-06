@@ -235,3 +235,5 @@ GEMINI.md
 *.zip
 .ipynb_checkpoints/
 unsloth_compiled_cache/
+notebooks/
+utils/

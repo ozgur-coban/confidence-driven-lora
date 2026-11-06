@@ -54,7 +54,7 @@ def load_combined_hybrid_data(hybrid_cfg, sample_count, is_test=False):
     except Exception as e:
         print(f" -> Warning: Failed to load HF hybrid dataset: {e}")
 
-    # 2. Load Local Synthetic GSM8K Hybrid Dataset (~1050 samples)
+    # 2. Load Synthetic GSM8K Hybrid Dataset
     local_key = "local_test" if is_test else "local_train"
     local_path = hybrid_cfg.get(local_key)
     if local_path and os.path.exists(local_path):
@@ -83,16 +83,14 @@ def main():
     args = parse_args()
 
     local_paths = ROUTER_DATASET_CONFIGS.get("local_paths")
-    # Make a copy so we don't mutate the original dictionary
     domain_rules = ROUTER_DATASET_CONFIGS.get("domain_rules").copy() 
     
     if "medical" in domain_rules:
         del domain_rules["medical"]
 
-    # --- THE FIX: Extract hybrid configuration and remove it from DatasetManager's queue ---
     hybrid_cfg = domain_rules.pop("hybrid")
 
-    # DatasetManager will now ONLY load math, code, and general
+
     data_manager = DatasetManager(local_paths=local_paths, domain_configs=domain_rules)
     router = MetaRouter()
 

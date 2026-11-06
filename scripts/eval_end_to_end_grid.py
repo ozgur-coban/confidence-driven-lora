@@ -179,12 +179,10 @@ def main():
                                 if expected == "math" or ds_name == "gsm8k":
                                     log_entry["execution_correct"] = evaluate_math(metrics["response"], truth)
                                 elif expected == "code" or ds_name == "codefeedback":
-                                    # Leave as None for offline LLM-as-a-judge evaluation
+                                    
                                     log_entry["execution_correct"] = None 
                                 elif expected == "hybrid":
-                                    # We can evaluate the math portion automatically, but the final
-                                    # determination requires offline LLM evaluation of the code.
-                                    # Leaving as None so it isn't accidentally counted as a strict False.
+                                    
                                     log_entry["execution_correct"] = None
                             
                             master_log[task["idx"]] = log_entry
@@ -200,7 +198,7 @@ def main():
             if IN_COLAB:
                 drive_filepath = os.path.join(args.drive_dir, f"eval_{ds_name}_{config}.json")
                 shutil.copy2(out_filename, drive_filepath)
-                print(f"    [✔] Synced to Google Drive -> {drive_filepath}")
+                print(f"    [] Synced to Google Drive -> {drive_filepath}")
 
     print("\nAll tasks completed successfully.")
 

@@ -5,9 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# ==========================================
-# STRICT ACADEMIC AESTHETICS
-# ==========================================
+
 sns.set_theme(style="white", context="paper")
 plt.rcParams.update({
     'font.family': 'serif',
@@ -80,7 +78,7 @@ def plot_accuracy_heatmap(df: pd.DataFrame):
     plt.ylabel("Dataset", fontweight='bold')
     plt.xlabel("Model Configuration", fontweight='bold')
     
-    # FIX: Rotate x-axis labels by 45 degrees so they don't overlap
+    
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     
@@ -134,7 +132,7 @@ def plot_latency_and_throughput(df: pd.DataFrame):
     bars = ax1.bar(metrics.index, metrics['tps'], color=PRIMARY_COLOR, alpha=0.8, label="TPS")
     ax1.tick_params(axis='y', labelcolor=PRIMARY_COLOR)
     
-    # FIX: Rotate x-axis labels
+    
     ax1.set_xticklabels(metrics.index, rotation=45, ha='right')
 
     ax2 = ax1.twinx()  
@@ -160,7 +158,7 @@ def plot_hybrid_performance(df: pd.DataFrame):
     plt.ylabel("Accuracy (%)", fontweight='bold')
     plt.xlabel("Model Configuration", fontweight='bold')
     
-    # FIX: Rotate x-axis labels
+    
     plt.xticks(rotation=45, ha='right')
     
     for p in ax.patches:
@@ -181,7 +179,7 @@ def plot_wildchat_performance(df: pd.DataFrame):
     plt.ylabel("Accuracy (%)", fontweight='bold')
     plt.xlabel("Model Configuration", fontweight='bold')
     
-    # FIX: Rotate x-axis labels
+    
     plt.xticks(rotation=45, ha='right')
     
     for p in ax.patches:
