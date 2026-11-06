@@ -11,12 +11,12 @@ import time
 import torch
 import threading
 
-# --- CROSS-PLATFORM NON-BLOCKING INPUT ---
+
 if os.name == "nt":
     import msvcrt
 else:
     import select
-# -----------------------------------------
+
 
 import argparse
 from dotenv import load_dotenv
@@ -41,8 +41,7 @@ class InterruptStoppingCriteria(StoppingCriteria):
 
 
 global_interrupt = InterruptStoppingCriteria()
-# Notice: All signal hooks have been completely removed.
-# ---------------------------------------------
+
 
 
 def print_profile(step_name, start_time=None):
@@ -167,7 +166,7 @@ def main():
 
             if prompt.lower().startswith("/base "):
                 bypass_lora = True
-                prompt = prompt[6:].strip()  # Strip the "/base " command from the string
+                prompt = prompt[6:].strip()  
             elif prompt.lower() == "/base":
                 print(
                     "  [ERROR] Please provide a prompt after the command. Example: /base What is 2+2?"
@@ -225,10 +224,10 @@ def main():
             gen_thread = threading.Thread(target=generation_task)
             gen_thread.start()
 
-            # --- NON-BLOCKING INPUT LISTENER (BYPASSES SSH CTRL+C ISSUES) ---
+            
             interrupted_by_user = False
 
-            # Flush the input buffer before listening so accidental earlier keystrokes don't trigger it
+            
             if os.name == "nt":
                 while msvcrt.kbhit():
                     msvcrt.getch()
@@ -238,18 +237,18 @@ def main():
 
             # Main thread loops while model generates
             while gen_thread.is_alive():
-                gen_thread.join(0.1)  # Wait a tiny bit
+                gen_thread.join(0.1)  
 
                 if os.name == "nt":
                     if msvcrt.kbhit():
-                        msvcrt.getch()  # Consume the keypress
+                        msvcrt.getch() 
                         interrupted_by_user = True
                         break
                 else:
                     # Unix/Linux (SSH environments)
                     i, _, _ = select.select([sys.stdin], [], [], 0)
                     if i:
-                        sys.stdin.readline()  # Consume the enter keypress
+                        sys.stdin.readline()  
                         interrupted_by_user = True
                         break
 

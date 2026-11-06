@@ -48,7 +48,7 @@ def main():
     print("\n=== STARTING OFFLINE TIES MERGE ===")
     
     # 1. Load Base Model into CPU memory 
-    # (FP16 reduces RAM usage while maintaining LoRA compatibility precision)
+    
     print(f"1. Loading base model ({args.base_model_id})...")
     base_model = AutoModelForCausalLM.from_pretrained(
         args.base_model_id, 
@@ -68,7 +68,7 @@ def main():
         raise FileNotFoundError(f"Code adapter not found at {args.code_adapter}")
     model.load_adapter(args.code_adapter, adapter_name="code")
 
-    # 4. Execute the TIES fusion
+    # 4. Execute the TIES 
     print(f"4. Executing TIES Merge (Density: {args.density}, Weights: {args.weight} / {args.weight})...")
     model.add_weighted_adapter(
         adapters=["math", "code"],
@@ -82,7 +82,7 @@ def main():
     print(f"5. Saving fused HYBRID adapter to: {args.output_dir}")
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Passing the specific adapter_name ensures we don't save the base weights or the unmerged LoRAs
+    
     model.save_pretrained(args.output_dir, adapter_name="hybrid")
     
     print("=== TIES MERGE COMPLETE ===")

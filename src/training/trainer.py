@@ -60,16 +60,16 @@ class AdapterTrainer:
             bf16=False,
             optim="adamw_torch",
             max_grad_norm=0.3,
-            warmup_steps=warmup_steps,  # Replaces deprecated warmup_ratio
-            eval_steps=eval_steps,      # Decoupled from save_steps
+            warmup_steps=warmup_steps,  
+            eval_steps=eval_steps,      
             save_steps=save_steps,
-            seed=seed,                  # Ensures reproducibility
+            seed=seed,                  
             save_total_limit=2,
             load_best_model_at_end=True,
             metric_for_best_model="loss",
             greater_is_better=False,
             report_to="none",
-            remove_unused_columns=False, # Protects the manually created labels tensor
+            remove_unused_columns=False, 
         )
 
     def train(

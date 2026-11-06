@@ -49,9 +49,7 @@ def main():
     if args.enable_training:
         print("\n1. Fetching Training Data from Data Manager...")
 
-        # We can use a slightly smaller general mixture here compared to the syntax router,
-        # as calculating 768D embeddings for 250k samples takes significantly longer
-        # than calculating TF-IDF n-grams.
+
         training_data = data_manager.get_training_data(
             specialist_samples=args.specialist_samples,
             general_samples=6000,

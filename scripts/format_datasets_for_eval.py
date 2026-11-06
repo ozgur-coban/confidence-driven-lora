@@ -126,7 +126,7 @@ if __name__ == "__main__":
     code_data = format_codefeedback(300)
     format_mixed(math_data, code_data, 300)
     
-    # Using your exact local paths
+    
     format_synthetic_hybrid(input_path="./data/gsm8k_test_batches/gsm8k_hybrid_test.json")
     format_wildchat(input_path="./data/wildchat/hybrid_wildchat_from_gemini_filtered_further.json")
     

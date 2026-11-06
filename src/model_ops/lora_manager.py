@@ -6,7 +6,7 @@ from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_tr
 class LoraManager:
     def __init__(self, model_id: str = "meta-llama/Llama-3.2-3B"):
         self.model_id = model_id
-        # Automatically detect GPU
+        #  detect GPU
         self.device_map = "auto" if torch.cuda.is_available() else "cpu"
 
     def load_base_model(self):
@@ -20,7 +20,7 @@ class LoraManager:
         )
         model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
-            quantization_config=bnb_config,  # Critical for memory management
+            quantization_config=bnb_config,  # memory management
             device_map=self.device_map,
         )
         model = prepare_model_for_kbit_training(model)

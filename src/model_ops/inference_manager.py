@@ -27,7 +27,7 @@ class InferenceManager:
         self.tokenizer = AutoTokenizer.from_pretrained(base_model_id, clean_up_tokenization_spaces=False)
         self.tokenizer.padding_side = "left"
 
-        # FIX 1: Set Llama 3 dedicated pad token to avoid pad == eos batching deadlocks
+        # Set Llama 3 dedicated pad token to avoid pad == eos batching deadlocks
         if self.tokenizer.pad_token_id is None:
             pad_id = self.tokenizer.convert_tokens_to_ids("<|finetune_right_pad_id|>")
             if pad_id is not None and isinstance(pad_id, int):
@@ -35,7 +35,7 @@ class InferenceManager:
             else:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # Fix EOS token handling for Llama 3.2
+        # EOS token handling for Llama 3.2
         eos_tokens = [self.tokenizer.eos_token_id]
         eot_id = self.tokenizer.convert_tokens_to_ids("<|eot_id|>")
         if eot_id is not None and isinstance(eot_id, int):
@@ -78,7 +78,7 @@ class InferenceManager:
         # Override with any explicit kwargs passed at runtime
         gen_kwargs.update(runtime_kwargs)
 
-        # FIX 2: Hard fallback if max_new_tokens was missing due to key mismatch or registry omission
+        #  fallback if max_new_tokens was missing due to key mismatch or registry omission
         if "max_new_tokens" not in gen_kwargs and "max_length" not in gen_kwargs:
             gen_kwargs["max_new_tokens"] = 512
 

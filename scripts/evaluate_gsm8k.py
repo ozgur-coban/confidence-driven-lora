@@ -204,7 +204,7 @@ def main():
                 **inputs,
                 max_new_tokens=512, # Bound generation so base model doesn't loop forever
                 pad_token_id=tokenizer.eos_token_id,
-                do_sample=False, # Greedy decoding is mathematically most accurate
+                do_sample=False, # Greedy decoding 
             )
 
         input_length = inputs["input_ids"].shape[1]
